@@ -1,0 +1,35 @@
+import 'package:intl/intl.dart';
+
+import '../constants/app_strings.dart';
+
+/// Number, date, and currency formatting helpers.
+class FormatHelpers {
+  FormatHelpers._();
+
+  static final NumberFormat _money = NumberFormat('#,##0', 'en_US');
+
+  /// Formats a value as `Rs. 1,234`.
+  static String currency(num value) =>
+      '${AppStrings.currencySymbol} ${_money.format(value)}';
+
+  /// Formats a value with thousands separators.
+  static String number(num value) => _money.format(value);
+
+  /// Today's date as `yyyy-MM-dd` for grouping/lookup keys.
+  static String todayKey() => DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+  /// Day of week only `Saturday`.
+  static String dayOfWeek([DateTime? at]) =>
+      DateFormat('EEEE').format(at ?? DateTime.now());
+
+  /// Short date format `Apr 26, 2026`.
+  static String headerDate([DateTime? at]) =>
+      DateFormat('MMM d, yyyy').format(at ?? DateTime.now());
+
+  /// Month label `April 2026`.
+  static String monthLabel([DateTime? at]) =>
+      DateFormat('MMMM yyyy').format(at ?? DateTime.now());
+
+  /// Current time in `HH:mm`.
+  static String timeNow() => DateFormat('HH:mm').format(DateTime.now());
+}

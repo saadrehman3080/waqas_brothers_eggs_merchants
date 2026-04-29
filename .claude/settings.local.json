@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "Bash(curl -s \"https://api.github.com/repos/saadrehman3080/admin_atta_traders/git/trees/main?recursive=1\")",
+      "Bash(curl -s \"https://raw.githubusercontent.com/saadrehman3080/admin_atta_traders/main/lib/routes/app_routes.dart\")",
+      "Bash(curl -s \"https://raw.githubusercontent.com/saadrehman3080/admin_atta_traders/main/lib/core/theme/app_theme.dart\")",
+      "Bash(flutter analyze *)",
+      "Bash(flutter test *)"
+    ]
+  }
+}
