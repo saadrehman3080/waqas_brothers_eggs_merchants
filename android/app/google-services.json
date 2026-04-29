@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1001665567230",
+    "project_id": "waqas-brothers-eggs-merchants",
+    "storage_bucket": "waqas-brothers-eggs-merchants.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1001665567230:android:bc1aeee8fb5c8d6db948af",
+        "android_client_info": {
+          "package_name": "com.example.waqas_brothers_eggs_merchants"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBQD2gqvEZSnglarUn5lvwjOkg5Wa9unww"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

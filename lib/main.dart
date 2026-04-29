@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:waqas_brothers_eggs_merchants/firebase_options.dart';
 import 'core/constants/app_strings.dart';
 import 'core/theme/app_theme.dart';
 import 'core/utils/connectivity_service.dart';
 import 'routes/app_routes.dart';
 import 'services/data_service.dart';
 import 'viewmodels/inventory_viewmodel.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,6 +25,8 @@ Future<void> main() async {
 
   final connectivity = ConnectivityService();
   await connectivity.initialize();
+
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   runApp(WaqasBrothersApp(connectivity: connectivity));
 }
