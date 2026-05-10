@@ -13,9 +13,9 @@ class OrderViewModel extends ChangeNotifier {
 
   final InventoryViewModel _inventory;
 
-  // Cart
-  final Map<int, int> _cart = {};
-  Map<int, int> get cart => Map.unmodifiable(_cart);
+  // Cart — keyed by Firestore product ID (String)
+  final Map<String, int> _cart = {};
+  Map<String, int> get cart => Map.unmodifiable(_cart);
 
   // Checkout sheet config
   BillType _paymentType = BillType.cash;
@@ -33,7 +33,7 @@ class OrderViewModel extends ChangeNotifier {
   bool get isSubmitting => _submission == OrderSubmissionState.submitting;
 
   // ── Cart actions ───────────────────────────────────────────
-  int qtyOf(int productId) => _cart[productId] ?? 0;
+  int qtyOf(String productId) => _cart[productId] ?? 0;
   bool get hasItems => _cart.values.any((q) => q > 0);
 
   double get subtotal => _inventory.products.fold(0.0, (sum, p) {
@@ -43,12 +43,12 @@ class OrderViewModel extends ChangeNotifier {
   double get total =>
       (subtotal - _discount).clamp(0, double.infinity).toDouble();
 
-  void increment(int productId) {
+  void increment(String productId) {
     _cart.update(productId, (q) => q + 1, ifAbsent: () => 1);
     notifyListeners();
   }
 
-  void decrement(int productId) {
+  void decrement(String productId) {
     final next = (qtyOf(productId)) - 1;
     if (next <= 0) {
       _cart.remove(productId);
@@ -58,7 +58,7 @@ class OrderViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setQty(int productId, int qty) {
+  void setQty(String productId, int qty) {
     if (qty <= 0) {
       _cart.remove(productId);
     } else {
@@ -105,7 +105,7 @@ class OrderViewModel extends ChangeNotifier {
     _submission = OrderSubmissionState.submitting;
     notifyListeners();
     final ok = await _inventory.createBill(
-      cart: Map<int, int>.from(_cart),
+      cart: Map<String, int>.from(_cart),
       discount: _discount,
       type: _paymentType,
       customer: _customer.trim(),

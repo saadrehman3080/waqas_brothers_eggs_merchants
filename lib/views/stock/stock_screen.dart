@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
 import '../../core/constants/app_strings.dart';
 import '../../core/theme/color_schemes.dart';
 import '../../core/utils/custom_snackbar.dart';
@@ -28,6 +27,17 @@ class StockScreen extends StatelessWidget {
 class _StockView extends StatelessWidget {
   const _StockView();
 
+  Future<void> _submitProduct(BuildContext context) async {
+    final stock = context.read<StockViewModel>();
+    final ok = await stock.submitProduct();
+    if (!context.mounted) return;
+    if (ok) {
+      CustomSnackbar.success(context, 'Product updated');
+    } else {
+      CustomSnackbar.error(context, 'Please enter a valid price');
+    }
+  }
+
   Future<void> _submitAddStock(BuildContext context) async {
     final stock = context.read<StockViewModel>();
     final ok = await stock.submitAddStock();
@@ -35,19 +45,10 @@ class _StockView extends StatelessWidget {
     if (ok) {
       CustomSnackbar.success(context, 'Stock added');
     } else {
-      CustomSnackbar.error(context, 'Please select a product and quantity');
-    }
-  }
-
-  Future<void> _submitProduct(BuildContext context) async {
-    final stock = context.read<StockViewModel>();
-    final isEditing = stock.isEditing;
-    final ok = await stock.submitProduct();
-    if (!context.mounted) return;
-    if (ok) {
-      CustomSnackbar.success(context, isEditing ? 'Product updated' : 'Product added');
-    } else {
-      CustomSnackbar.error(context, 'Please enter name and price');
+      CustomSnackbar.error(
+        context,
+        'Enter a quantity for at least one product',
+      );
     }
   }
 
@@ -65,63 +66,221 @@ class _StockView extends StatelessWidget {
             title: 'Stock & Products',
             urdu: AppStrings.urdStock,
             trailing: stock.view == StockView.list
-                ? Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      AppButton(
-                        label: '+Stock',
-                        small: true,
-                        variant: AppButtonVariant.soft,
-                        onPressed: stock.showAddStock,
-                      ),
-                      const SizedBox(width: 5),
-                      AppButton(
-                        label: '+Item',
-                        small: true,
-                        onPressed: stock.showNewProduct,
-                      ),
-                    ],
+                ? AppButton(
+                    label: '+Stock',
+                    small: true,
+                    variant: AppButtonVariant.soft,
+                    onPressed: stock.showAddStock,
                   )
                 : null,
           ),
           Expanded(
             child: switch (stock.view) {
-              StockView.list => products.isEmpty
-                  ? const EmptyState(
-                      message: 'No products yet',
-                      icon: Icons.inventory_2_outlined,
-                    )
-                  : RefreshIndicator(
-                      onRefresh: inventory.refresh,
-                      child: ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(13, 11, 13, 16),
-                        itemCount: products.length,
-                        itemBuilder: (_, i) {
-                          final p = products[i];
-                          return ProductStockCard(
-                            product: p,
-                            entries: stock.entriesFor(p.id),
-                            onEdit: () => stock.showEditProduct(p),
-                          );
-                        },
-                      ),
-                    ),
+              StockView.list => () {
+                if (products.isEmpty) {
+                  return const EmptyState(
+                    message: 'No products yet',
+                    icon: Icons.inventory_2_outlined,
+                  );
+                }
+                final ref = products.reduce(
+                  (a, b) => b.updatedAtMs > a.updatedAtMs ? b : a,
+                );
+                final showBanner =
+                    ref.updatedAt.isNotEmpty || ref.lastStockDevice.isNotEmpty;
+                final now = DateTime.now();
+                final lastUpdate = ref.updatedAtMs > 0
+                    ? DateTime.fromMillisecondsSinceEpoch(ref.updatedAtMs)
+                    : null;
+                final isToday = lastUpdate != null &&
+                    lastUpdate.year == now.year &&
+                    lastUpdate.month == now.month &&
+                    lastUpdate.day == now.day;
+                final pattiesAddedToday = isToday
+                    ? products
+                        .where((p) => p.nameEn == 'Patty')
+                        .fold<int>(0, (sum, p) => sum + p.stockAddedToday)
+                    : 0;
+                return RefreshIndicator(
+                  onRefresh: inventory.refresh,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(13, 11, 13, 16),
+                    itemCount: products.length + (showBanner ? 1 : 0),
+                    itemBuilder: (_, i) {
+                      if (showBanner && i == 0) {
+                        return _LastUpdatedBanner(
+                          updatedAt: ref.updatedAt,
+                          device: ref.lastStockDevice,
+                          pattiesAddedToday: pattiesAddedToday,
+                        );
+                      }
+                      final p = products[showBanner ? i - 1 : i];
+                      return ProductStockCard(
+                        product: p,
+                        onEdit: () => stock.showEditProduct(p),
+                      );
+                    },
+                  ),
+                );
+              }(),
               StockView.addStock => SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(13, 11, 13, 16),
-                  child: AddStockForm(
-                    onCancel: stock.showList,
-                    onSubmit: () => _submitAddStock(context),
-                  ),
+                padding: const EdgeInsets.fromLTRB(13, 11, 13, 16),
+                child: AddStockForm(
+                  onCancel: stock.showList,
+                  onSubmit: () => _submitAddStock(context),
                 ),
+              ),
               StockView.editProduct => SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(13, 11, 13, 16),
-                  child: ProductForm(
-                    onCancel: stock.showList,
-                    onSubmit: () => _submitProduct(context),
-                  ),
+                padding: const EdgeInsets.fromLTRB(13, 11, 13, 16),
+                child: ProductForm(
+                  onCancel: stock.showList,
+                  onSubmit: () => _submitProduct(context),
                 ),
+              ),
             },
           ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Last-updated banner ────────────────────────────────────────────────────
+
+class _LastUpdatedBanner extends StatelessWidget {
+  final String updatedAt;
+  final String device;
+  final int pattiesAddedToday;
+
+  const _LastUpdatedBanner({
+    required this.updatedAt,
+    required this.device,
+    required this.pattiesAddedToday,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.primary.withValues(alpha: 0.09),
+            AppColors.primary.withValues(alpha: 0.03),
+          ],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        children: [
+          // ── Icon circle ──
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.13),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.cloud_done_rounded,
+              size: 19,
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(width: 12),
+
+          // ── Text info ──
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'LAST STOCK UPDATE',
+                  style: TextStyle(
+                    fontSize: 8,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primary,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                if (updatedAt.isNotEmpty)
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.access_time_rounded,
+                        size: 11,
+                        color: AppColors.ink400,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        updatedAt,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.ink900,
+                        ),
+                      ),
+                    ],
+                  ),
+                if (device.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.phone_android_rounded,
+                        size: 11,
+                        color: AppColors.ink400,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          device,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: AppColors.ink600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // ── Patties count ──
+          if (pattiesAddedToday > 0) ...[
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '+$pattiesAddedToday',
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primary,
+                    height: 1,
+                  ),
+                ),
+                const Text(
+                  'patties today',
+                  style: TextStyle(
+                    fontSize: 8,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.ink400,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

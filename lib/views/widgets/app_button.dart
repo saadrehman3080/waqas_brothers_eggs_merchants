@@ -45,9 +45,9 @@ class AppButton extends StatelessWidget {
         );
       case AppButtonVariant.ghost:
         return _ButtonStyle(
-          background: Colors.transparent,
-          foreground: AppColors.ink600,
-          border: Border.all(color: AppColors.border),
+          background: AppColors.surface,
+          foreground: AppColors.ink900,
+          border: Border.all(color: AppColors.borderDark, width: 1.5),
         );
       case AppButtonVariant.soft:
         return _ButtonStyle(

@@ -8,7 +8,7 @@ import '../../widgets/app_button.dart';
 
 class CreditBillDetail extends StatelessWidget {
   final Bill bill;
-  final Product? Function(int) productLookup;
+  final Product? Function(String) productLookup;
   final VoidCallback onMarkPaid;
   final VoidCallback onReprint;
 

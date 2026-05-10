@@ -227,7 +227,7 @@ class _Header extends StatelessWidget {
 
 class _ItemList extends StatelessWidget {
   final List<Product> items;
-  final int Function(int) qtyOf;
+  final int Function(String) qtyOf;
 
   const _ItemList({required this.items, required this.qtyOf});
 

@@ -24,7 +24,7 @@ class CreditGroupCard extends StatelessWidget {
   final CreditGroup group;
   final bool expanded;
   final VoidCallback onToggle;
-  final Product? Function(int) productLookup;
+  final Product? Function(String) productLookup;
   final void Function(Bill) onMarkPaid;
   final void Function(Bill) onReprint;
 

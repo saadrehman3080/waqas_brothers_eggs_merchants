@@ -6,7 +6,9 @@
       "Bash(curl -s \"https://raw.githubusercontent.com/saadrehman3080/admin_atta_traders/main/lib/routes/app_routes.dart\")",
       "Bash(curl -s \"https://raw.githubusercontent.com/saadrehman3080/admin_atta_traders/main/lib/core/theme/app_theme.dart\")",
       "Bash(flutter analyze *)",
-      "Bash(flutter test *)"
+      "Bash(flutter test *)",
+      "Bash(Remove-Item \"d:\\\\Flutter Projects\\\\waqas_brothers_eggs_merchants\\\\lib\\\\models\\\\stock_entry.dart\")",
+      "Bash(del \"d:\\\\Flutter Projects\\\\waqas_brothers_eggs_merchants\\\\lib\\\\views\\\\stock\\\\widgets\\\\product_form.dart\")"
     ]
   }
 }

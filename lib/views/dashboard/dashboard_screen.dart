@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/color_schemes.dart';
 import '../../core/utils/custom_snackbar.dart';
-import '../../services/data_service.dart';
 import '../../viewmodels/inventory_viewmodel.dart';
 import 'widgets/collection_hero.dart';
 import 'widgets/dashboard_header.dart';
@@ -17,7 +16,6 @@ class DashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final inventory = context.watch<InventoryViewModel>();
-    final dataService = context.read<DataService>();
 
     return Container(
       color: AppColors.background,
@@ -41,15 +39,15 @@ class DashboardScreen extends StatelessWidget {
                     cash: inventory.todayCash,
                     credit: inventory.todayCredit,
                     customers: inventory.todayCustomerCount,
-                    dozens: inventory.productQtyToday(1),
-                    trays: inventory.productQtyToday(2),
-                    patties: inventory.productQtyToday(3),
-                    eggs: inventory.productQtyToday(4),
+                    dozens: inventory.productQtyTodayByName('Egg Dozen'),
+                    trays: inventory.productQtyTodayByName('Egg Tray'),
+                    patties: inventory.productQtyTodayByName('Patty'),
+                    eggs: inventory.productQtyTodayByName('Single Egg'),
                   ),
                   const SizedBox(height: 12),
                   StockOverviewCard(products: inventory.products),
                   const SizedBox(height: 12),
-                  MonthlySummaryCard(summary: dataService.getMonthlySummary()),
+                  MonthlySummaryCard(summary: inventory.monthlySummary),
                   const SizedBox(height: 12),
                   PrinterCard(
                     printers: inventory.printers,

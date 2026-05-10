@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import '../../../core/constants/app_strings.dart';
 import '../../../core/constants/input_styles.dart';
 import '../../../core/theme/color_schemes.dart';
 import '../../../core/theme/text_styles.dart';
@@ -24,10 +23,12 @@ class ProductForm extends StatefulWidget {
 }
 
 class _ProductFormState extends State<ProductForm> {
-  final TextEditingController _nameEnCtrl = TextEditingController();
-  final TextEditingController _nameUrCtrl = TextEditingController();
-  final TextEditingController _priceCtrl = TextEditingController();
-  final TextEditingController _revenuePerUnitCtrl = TextEditingController();
+  final _nameEnCtrl = TextEditingController();
+  final _nameUrCtrl = TextEditingController();
+  final _priceCtrl = TextEditingController();
+  final _revenueCtrl = TextEditingController();
+
+  bool _submitting = false;
 
   @override
   void initState() {
@@ -36,7 +37,7 @@ class _ProductFormState extends State<ProductForm> {
     _nameEnCtrl.text = stock.nameEn;
     _nameUrCtrl.text = stock.nameUr;
     _priceCtrl.text = stock.priceText;
-    _revenuePerUnitCtrl.text = stock.revenuePerUnitText;
+    _revenueCtrl.text = stock.revenuePerUnitText;
   }
 
   @override
@@ -44,16 +45,25 @@ class _ProductFormState extends State<ProductForm> {
     _nameEnCtrl.dispose();
     _nameUrCtrl.dispose();
     _priceCtrl.dispose();
-    _revenuePerUnitCtrl.dispose();
+    _revenueCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleSubmit() async {
+    if (_submitting) return;
+    setState(() => _submitting = true);
+    try {
+      await widget.onSubmit();
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final stock = context.watch<StockViewModel>();
-    final isEditing = stock.isEditing;
+
     return Container(
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(13),
@@ -62,85 +72,144 @@ class _ProductFormState extends State<ProductForm> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            isEditing ? 'Edit Product' : 'New Product',
-            style: AppTextStyles.bodyLg,
-          ),
-          const SizedBox(height: 2),
-          Text(
-            isEditing ? AppStrings.urdEdit : AppStrings.urdNewProduct,
-            style: AppTextStyles.urdu(size: 12),
-          ),
-          const SizedBox(height: 16),
-          _label('Name (English)'),
-          const SizedBox(height: 5),
-          TextField(
-            controller: _nameEnCtrl,
-            onChanged: stock.setNameEn,
-            decoration: InputStyles.field(hint: 'e.g. Egg Dozen'),
-            style: const TextStyle(fontSize: 13, color: AppColors.ink900),
-          ),
-          const SizedBox(height: 11),
-          _label('Name (Urdu)'),
-          const SizedBox(height: 5),
-          TextField(
-            controller: _nameUrCtrl,
-            onChanged: stock.setNameUr,
-            decoration: InputStyles.field(hint: 'مثال: درجن انڈے'),
-            style: const TextStyle(fontSize: 13, color: AppColors.ink900),
-          ),
-          const SizedBox(height: 11),
-          _label('Price (Rs)'),
-          const SizedBox(height: 5),
-          TextField(
-            controller: _priceCtrl,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            onChanged: stock.setPriceText,
-            decoration: InputStyles.field(hint: 'e.g. 180'),
-            style: const TextStyle(fontSize: 13, color: AppColors.ink900),
-          ),
-          const SizedBox(height: 11),
-          _label('Revenue Per Unit (Rs)'),
-          const SizedBox(height: 5),
-          TextField(
-            controller: _revenuePerUnitCtrl,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            onChanged: stock.setRevenuePerUnitText,
-            decoration: InputStyles.field(hint: 'e.g. 30'),
-            style: const TextStyle(fontSize: 13, color: AppColors.ink900),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: AppButton(
-                  label: 'Cancel',
-                  variant: AppButtonVariant.ghost,
-                  full: true,
-                  onPressed: widget.onCancel,
+          // ── Header ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Edit Product', style: AppTextStyles.bodyLg),
+                const SizedBox(height: 1),
+                Text(
+                  stock.editingProduct?.nameEn ?? '',
+                  style: AppTextStyles.bodySm.copyWith(color: AppColors.ink600),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: AppButton(
-                  label: isEditing ? 'Save' : 'Add Product',
-                  full: true,
-                  onPressed: widget.onSubmit,
+              ],
+            ),
+          ),
+          const Divider(height: 1, thickness: 1, color: AppColors.border),
+
+          // ── Fields ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _label('Name (English)'),
+                const SizedBox(height: 5),
+                TextField(
+                  controller: _nameEnCtrl,
+                  readOnly: true,
+                  decoration: InputStyles.field().copyWith(
+                    fillColor: AppColors.background,
+                    // suffixIcon: const Icon(
+                    //   Icons.lock_outline_rounded,
+                    //   size: 14,
+                    //   color: AppColors.ink400,
+                    // ),
+                  ),
+                  style: const TextStyle(fontSize: 13, color: AppColors.ink400),
                 ),
-              ),
-            ],
+                const SizedBox(height: 12),
+                _label('Name (Urdu)'),
+                const SizedBox(height: 5),
+                TextField(
+                  controller: _nameUrCtrl,
+                  readOnly: true,
+                  decoration: InputStyles.field().copyWith(
+                    fillColor: AppColors.background,
+                    // suffixIcon: const Icon(
+                    //   Icons.lock_outline_rounded,
+                    //   size: 14,
+                    //   color: AppColors.ink400,
+                    // ),
+                  ),
+                  style: const TextStyle(fontSize: 13, color: AppColors.ink400),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _label('Price (Rs)'),
+                          const SizedBox(height: 5),
+                          TextField(
+                            controller: _priceCtrl,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
+                            onChanged: stock.setPriceText,
+                            decoration: InputStyles.field(hint: '0'),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: AppColors.ink900,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _label('Revenue / Unit (Rs)'),
+                          const SizedBox(height: 5),
+                          TextField(
+                            controller: _revenueCtrl,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
+                            onChanged: stock.setRevenuePerUnitText,
+                            decoration: InputStyles.field(hint: '0'),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: AppColors.ink900,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: AppButton(
+                        label: 'Cancel',
+                        variant: AppButtonVariant.ghost,
+                        full: true,
+                        onPressed: _submitting ? null : widget.onCancel,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: AppButton(
+                        label: 'Save',
+                        full: true,
+                        busy: _submitting,
+                        onPressed: _handleSubmit,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _label(String label) => Text(
-    label.toUpperCase(),
+  Widget _label(String text) => Text(
+    text.toUpperCase(),
     style: const TextStyle(
-      fontSize: 10,
+      fontSize: 9,
       color: AppColors.ink600,
       fontWeight: FontWeight.w600,
       letterSpacing: 0.3,

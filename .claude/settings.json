@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Remove-Item \"d:\\\\Flutter Projects\\\\waqas_brothers_eggs_merchants\\\\lib\\\\views\\\\stock\\\\widgets\\\\product_form.dart\" -Confirm:$false)"
+    ]
+  }
+}

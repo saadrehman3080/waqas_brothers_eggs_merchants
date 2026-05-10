@@ -1,10 +1,11 @@
 import 'package:flutter/foundation.dart';
 
 import '../core/constants/app_strings.dart';
+import '../core/utils/device_name.dart';
+import '../core/utils/format_helpers.dart';
 import '../models/bill.dart';
 import '../models/printer_device.dart';
 import '../models/product.dart';
-import '../models/stock_entry.dart';
 import '../services/data_service.dart';
 
 enum InventoryState { initial, loading, loaded, error }
@@ -17,23 +18,25 @@ class InventoryViewModel extends ChangeNotifier {
 
   final DataService _dataService;
 
+  String? _cachedDeviceName;
+  Future<String> _deviceName() async =>
+      _cachedDeviceName ??= await resolveDeviceName();
+
   InventoryState _state = InventoryState.initial;
   String? _errorMessage;
 
   List<Product> _products = const [];
   List<Bill> _bills = const [];
-  List<StockEntry> _stockEntries = const [];
   List<PrinterDevice> _printers = const [];
   bool _printerOn = false;
 
-  // ── Getters ─────────────────────────────────────────────────
+  // ── Getters ────────────────────────────────────────────────
   InventoryState get state => _state;
   bool get isLoading => _state == InventoryState.loading;
   String? get errorMessage => _errorMessage;
 
   List<Product> get products => List.unmodifiable(_products);
   List<Bill> get bills => List.unmodifiable(_bills);
-  List<StockEntry> get stockEntries => List.unmodifiable(_stockEntries);
   List<PrinterDevice> get printers => List.unmodifiable(_printers);
   bool get printerOn => _printerOn;
 
@@ -46,13 +49,11 @@ class InventoryViewModel extends ChangeNotifier {
       final results = await Future.wait([
         _dataService.getProducts(),
         _dataService.getBills(),
-        _dataService.getStockEntries(),
         _dataService.getPairedPrinters(),
       ]);
       _products = results[0] as List<Product>;
       _bills = results[1] as List<Bill>;
-      _stockEntries = results[2] as List<StockEntry>;
-      _printers = results[3] as List<PrinterDevice>;
+      _printers = results[2] as List<PrinterDevice>;
       _state = InventoryState.loaded;
     } catch (e) {
       _state = InventoryState.error;
@@ -65,7 +66,7 @@ class InventoryViewModel extends ChangeNotifier {
   Future<void> refresh() => load();
 
   // ── Lookups ────────────────────────────────────────────────
-  Product? productById(int id) {
+  Product? productById(String id) {
     for (final p in _products) {
       if (p.id == id) return p;
     }
@@ -76,7 +77,7 @@ class InventoryViewModel extends ChangeNotifier {
 
   // ── Mutations ──────────────────────────────────────────────
   Future<bool> createBill({
-    required Map<int, int> cart,
+    required Map<String, int> cart,
     required double discount,
     required BillType type,
     required String customer,
@@ -87,10 +88,9 @@ class InventoryViewModel extends ChangeNotifier {
         discount: discount,
         type: type,
         customer: customer.isEmpty ? AppStrings.walkInCustomer : customer,
-        device: AppStrings.defaultDeviceId,
+        device: await _deviceName(),
       );
       _bills = [bill, ..._bills];
-      // Reflect product sold totals locally
       _products = await _dataService.getProducts();
       notifyListeners();
       return true;
@@ -128,14 +128,16 @@ class InventoryViewModel extends ChangeNotifier {
     }
   }
 
-  Future<bool> addStockEntry({required int productId, required int qty}) async {
+  Future<bool> addStockEntry({
+    required String productId,
+    required int qty,
+  }) async {
     try {
-      final entry = await _dataService.addStockEntry(
+      await _dataService.addStockEntry(
         productId: productId,
         qty: qty,
-        device: AppStrings.defaultDeviceId,
+        device: await _deviceName(),
       );
-      _stockEntries = [..._stockEntries, entry];
       _products = await _dataService.getProducts();
       notifyListeners();
       return true;
@@ -170,7 +172,7 @@ class InventoryViewModel extends ChangeNotifier {
   }
 
   Future<bool> updateProduct({
-    required int id,
+    required String id,
     required String nameEn,
     required String nameUr,
     required double price,
@@ -195,12 +197,14 @@ class InventoryViewModel extends ChangeNotifier {
   }
 
   Future<bool> updateProductRevenuePerUnit({
-    required int id,
+    required String id,
     required double revenuePerUnit,
   }) async {
     try {
-      final product = _products.firstWhere((p) => p.id == id);
-      final updated = product.copyWith(revenuePerUnit: revenuePerUnit);
+      final updated = await _dataService.updateProductRevenuePerUnit(
+        id: id,
+        revenuePerUnit: revenuePerUnit,
+      );
       _products = _products.map((p) => p.id == id ? updated : p).toList();
       notifyListeners();
       return true;
@@ -235,8 +239,15 @@ class InventoryViewModel extends ChangeNotifier {
 
   // ── Aggregates ─────────────────────────────────────────────
   List<Bill> _todayBills() {
-    const today = '2026-04-26'; // Matches the seeded date for the demo data.
+    final today = FormatHelpers.todayKey();
     return _bills.where((b) => b.date == today).toList();
+  }
+
+  List<Bill> _currentMonthBills() {
+    final now = DateTime.now();
+    final prefix =
+        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}';
+    return _bills.where((b) => b.date.startsWith(prefix)).toList();
   }
 
   double get todayCash => _todayBills()
@@ -249,17 +260,29 @@ class InventoryViewModel extends ChangeNotifier {
 
   int get todayCustomerCount => _todayBills().length;
 
-  int productQtyToday(int pid) {
+  /// Units of [productId] sold today.
+  int productQtyToday(String productId) {
     return _todayBills().fold<int>(0, (sum, b) {
       for (final item in b.items) {
-        if (item.productId == pid) return sum + item.qty;
+        if (item.productId == productId) return sum + item.qty;
       }
       return sum;
     });
   }
 
-  /// Total margin/revenue earned today, computed from today's bill items
-  /// using each product's `revenuePerUnit`.
+  /// Units sold today for the product whose [nameEn] matches. Used by the
+  /// dashboard which knows product names but not Firestore-generated IDs.
+  int productQtyTodayByName(String nameEn) {
+    final product = _products.firstWhere(
+      (p) => p.nameEn == nameEn,
+      orElse: () => const Product(
+        id: '', nameEn: '', nameUr: '', price: 0, stock: 0, sold: 0,
+      ),
+    );
+    if (product.id.isEmpty) return 0;
+    return productQtyToday(product.id);
+  }
+
   double get todayRevenue {
     double total = 0;
     for (final bill in _todayBills()) {
@@ -270,5 +293,48 @@ class InventoryViewModel extends ChangeNotifier {
       }
     }
     return total;
+  }
+
+  /// Monthly aggregates computed from Firestore-loaded bills.
+  Map<String, String> get monthlySummary {
+    final monthBills = _currentMonthBills();
+    if (monthBills.isEmpty) {
+      return {
+        'revenue': FormatHelpers.currency(0),
+        'orders': '0',
+        'margin': FormatHelpers.currency(0),
+        'cash': FormatHelpers.currency(0),
+        'customers': '0',
+        'avgOrder': FormatHelpers.currency(0),
+      };
+    }
+
+    double revenue = 0;
+    double cash = 0;
+    double margin = 0;
+    final customers = <String>{};
+
+    for (final bill in monthBills) {
+      revenue += bill.total;
+      if (bill.type == BillType.cash) cash += bill.total;
+      if (bill.customer.isNotEmpty) customers.add(bill.customer);
+      for (final item in bill.items) {
+        final product = productById(item.productId);
+        if (product == null) continue;
+        margin += item.qty * product.revenuePerUnit;
+      }
+    }
+
+    final orders = monthBills.length;
+    final avgOrder = orders == 0 ? 0.0 : revenue / orders;
+
+    return {
+      'revenue': FormatHelpers.currency(revenue),
+      'orders': orders.toString(),
+      'margin': FormatHelpers.currency(margin),
+      'cash': FormatHelpers.currency(cash),
+      'customers': customers.length.toString(),
+      'avgOrder': FormatHelpers.currency(avgOrder),
+    };
   }
 }

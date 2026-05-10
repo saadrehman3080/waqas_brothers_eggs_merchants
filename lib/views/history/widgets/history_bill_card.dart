@@ -13,7 +13,7 @@ class HistoryBillCard extends StatelessWidget {
   final VoidCallback onConvertToCredit;
   final VoidCallback onReprint;
   final VoidCallback onDelete;
-  final Product? Function(int) productLookup;
+  final Product? Function(String) productLookup;
 
   const HistoryBillCard({
     super.key,
@@ -96,7 +96,7 @@ class HistoryBillCard extends StatelessWidget {
 
 class _ExpandedActions extends StatelessWidget {
   final Bill bill;
-  final Product? Function(int) productLookup;
+  final Product? Function(String) productLookup;
   final VoidCallback onConvertToCredit;
   final VoidCallback onReprint;
   final VoidCallback onDelete;

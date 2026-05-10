@@ -1,13 +1,11 @@
 import 'package:flutter/foundation.dart';
 
+import '../core/utils/egg_units.dart';
 import '../models/product.dart';
-import '../models/stock_entry.dart';
 import 'inventory_viewmodel.dart';
 
 enum StockView { list, addStock, editProduct }
 
-/// Drives the Stock & Products screen — controls which sub-view is shown
-/// (list / add stock / edit product) and exposes form state.
 class StockViewModel extends ChangeNotifier {
   StockViewModel(this._inventory);
 
@@ -16,25 +14,33 @@ class StockViewModel extends ChangeNotifier {
   StockView _view = StockView.list;
   StockView get view => _view;
 
+  // ── Edit-product form state ────────────────────────────────
   Product? _editingProduct;
   Product? get editingProduct => _editingProduct;
   bool get isEditing => _editingProduct != null;
 
-  // Add-stock form
-  int? selectedProductId;
-  String stockQtyText = '';
-  String addStockRevenuePerUnitText = '';
-
-  // Product form
   String nameEn = '';
   String nameUr = '';
   String priceText = '';
   String revenuePerUnitText = '';
 
+  void setNameEn(String v) => nameEn = v;
+  void setNameUr(String v) => nameUr = v;
+  void setPriceText(String v) => priceText = v;
+  void setRevenuePerUnitText(String v) => revenuePerUnitText = v;
+
+  // ── Add-stock form: productId → raw qty text ───────────────
+  final Map<String, String> _stockQtyMap = {};
+
+  // Formula converter fields (display state; drives _stockQtyMap for egg products)
+  String formulaPattyText = '';
+  String formulaTrayText = '';
+  String formulaDozenText = '';
+  String formulaSingleText = '';
+
   List<Product> get products => _inventory.products;
 
-  List<StockEntry> entriesFor(int productId) =>
-      _inventory.stockEntries.where((e) => e.productId == productId).toList();
+  String stockQtyTextFor(String productId) => _stockQtyMap[productId] ?? '';
 
   // ── View transitions ───────────────────────────────────────
   void showList() {
@@ -46,103 +52,153 @@ class StockViewModel extends ChangeNotifier {
   void showAddStock() {
     _resetForm();
     _view = StockView.addStock;
-    addStockRevenuePerUnitText = '';
-    notifyListeners();
-  }
-
-  void showNewProduct() {
-    _resetForm();
-    _view = StockView.editProduct;
     notifyListeners();
   }
 
   void showEditProduct(Product product) {
+    _resetForm();
     _editingProduct = product;
     nameEn = product.nameEn;
     nameUr = product.nameUr;
     priceText = product.price.toStringAsFixed(0);
     revenuePerUnitText = product.revenuePerUnit.toStringAsFixed(0);
-    selectedProductId = null;
-    stockQtyText = '';
     _view = StockView.editProduct;
     notifyListeners();
   }
 
-  // ── Field setters ──────────────────────────────────────────
-  void setSelectedProductId(int? id) {
-    selectedProductId = id;
+  // ── Stock qty field setters ────────────────────────────────
+  void setStockQtyText(String productId, String text) {
+    _stockQtyMap[productId] = _digits(text);
+  }
+
+  // ── Formula field setters ──────────────────────────────────
+  void setFormulaPatty(String raw) {
+    formulaPattyText = _digits(raw);
+    final n = int.tryParse(formulaPattyText) ?? 0;
+    if (n > 0) {
+      final r = EggUnits.fromPatties(n);
+      formulaTrayText = '${r.trays}';
+      formulaDozenText = '${r.dozens}';
+      formulaSingleText = '${r.eggs}';
+    } else {
+      formulaTrayText = formulaDozenText = formulaSingleText = '';
+    }
+    _applyFormulaToProducts();
     notifyListeners();
   }
 
-  void setStockQtyText(String value) {
-    stockQtyText = value;
+  void setFormulaTray(String raw) {
+    formulaTrayText = _digits(raw);
+    final n = int.tryParse(formulaTrayText) ?? 0;
+    if (n > 0) {
+      final r = EggUnits.fromTrays(n);
+      formulaPattyText = r.patties != null ? '${r.patties}' : '';
+      formulaDozenText = '${r.dozens}';
+      formulaSingleText = '${r.eggs}';
+    } else {
+      formulaPattyText = formulaDozenText = formulaSingleText = '';
+    }
+    _applyFormulaToProducts();
+    notifyListeners();
   }
 
-  void setAddStockRevenuePerUnitText(String value) {
-    addStockRevenuePerUnitText = value;
+  void setFormulaDozen(String raw) {
+    formulaDozenText = _digits(raw);
+    final n = int.tryParse(formulaDozenText) ?? 0;
+    if (n > 0) {
+      final r = EggUnits.fromDozens(n);
+      formulaPattyText = r.patties != null ? '${r.patties}' : '';
+      formulaTrayText = r.trays != null ? '${r.trays}' : '';
+      formulaSingleText = '${r.eggs}';
+    } else {
+      formulaPattyText = formulaTrayText = formulaSingleText = '';
+    }
+    _applyFormulaToProducts();
+    notifyListeners();
   }
 
-  void setNameEn(String value) => nameEn = value;
-  void setNameUr(String value) => nameUr = value;
-  void setPriceText(String value) => priceText = value;
-  void setRevenuePerUnitText(String value) => revenuePerUnitText = value;
+  void setFormulaSingle(String raw) {
+    formulaSingleText = _digits(raw);
+    final n = int.tryParse(formulaSingleText) ?? 0;
+    if (n > 0) {
+      final r = EggUnits.fromEggs(n);
+      formulaPattyText = r.patties != null ? '${r.patties}' : '';
+      formulaTrayText = r.trays != null ? '${r.trays}' : '';
+      formulaDozenText = r.dozens != null ? '${r.dozens}' : '';
+    } else {
+      formulaPattyText = formulaTrayText = formulaDozenText = '';
+    }
+    _applyFormulaToProducts();
+    notifyListeners();
+  }
 
   // ── Submission ─────────────────────────────────────────────
   Future<bool> submitAddStock() async {
-    final pid = selectedProductId;
-    final qty = int.tryParse(stockQtyText);
-    if (pid == null || qty == null || qty <= 0) return false;
-
-    // Update revenuePerUnit if provided
-    if (addStockRevenuePerUnitText.isNotEmpty) {
-      final revenuePerUnit = double.tryParse(addStockRevenuePerUnitText);
-      if (revenuePerUnit != null) {
-        await _inventory.updateProductRevenuePerUnit(
-          id: pid,
-          revenuePerUnit: revenuePerUnit,
-        );
-      }
+    final toSubmit = <String, int>{};
+    for (final entry in _stockQtyMap.entries) {
+      final qty = int.tryParse(entry.value);
+      if (qty != null && qty > 0) toSubmit[entry.key] = qty;
     }
+    if (toSubmit.isEmpty) return false;
 
-    final ok = await _inventory.addStockEntry(productId: pid, qty: qty);
-    if (ok) showList();
-    return ok;
+    bool anyOk = false;
+    for (final entry in toSubmit.entries) {
+      final ok =
+          await _inventory.addStockEntry(productId: entry.key, qty: entry.value);
+      if (ok) anyOk = true;
+    }
+    if (anyOk) showList();
+    return anyOk;
   }
 
   Future<bool> submitProduct() async {
     final price = double.tryParse(priceText);
-    final revenuePerUnit = double.tryParse(revenuePerUnitText);
-    if (nameEn.trim().isEmpty || price == null) return false;
-
+    final revenuePerUnit = double.tryParse(revenuePerUnitText) ?? 0;
     final editing = _editingProduct;
-    final ok = editing != null
-        ? await _inventory.updateProduct(
-            id: editing.id,
-            nameEn: nameEn.trim(),
-            nameUr: nameUr.trim(),
-            price: price,
-            revenuePerUnit: revenuePerUnit ?? 0,
-          )
-        : await _inventory.addProduct(
-            nameEn: nameEn.trim(),
-            nameUr: nameUr.trim(),
-            price: price,
-            revenuePerUnit: revenuePerUnit ?? 0,
-          );
+    if (editing == null || price == null) return false;
 
+    final ok = await _inventory.updateProduct(
+      id: editing.id,
+      nameEn: nameEn.trim(),
+      nameUr: nameUr.trim(),
+      price: price,
+      revenuePerUnit: revenuePerUnit,
+    );
     if (ok) showList();
     return ok;
   }
 
   // ── Internals ──────────────────────────────────────────────
+  void _applyFormulaToProducts() {
+    final nameToQty = {
+      'Patty': formulaPattyText,
+      'Egg Tray': formulaTrayText,
+      'Egg Dozen': formulaDozenText,
+      'Single Egg': formulaSingleText,
+    };
+    for (final p in products) {
+      final qty = nameToQty[p.nameEn];
+      if (qty == null) continue;
+      if (qty.isNotEmpty) {
+        _stockQtyMap[p.id] = qty;
+      } else {
+        _stockQtyMap.remove(p.id);
+      }
+    }
+  }
+
+  static String _digits(String s) => s.replaceAll(RegExp(r'[^0-9]'), '');
+
   void _resetForm() {
     _editingProduct = null;
-    selectedProductId = null;
-    stockQtyText = '';
-    addStockRevenuePerUnitText = '';
     nameEn = '';
     nameUr = '';
     priceText = '';
     revenuePerUnitText = '';
+    _stockQtyMap.clear();
+    formulaPattyText = '';
+    formulaTrayText = '';
+    formulaDozenText = '';
+    formulaSingleText = '';
   }
 }

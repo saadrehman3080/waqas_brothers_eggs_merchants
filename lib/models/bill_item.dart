@@ -1,6 +1,6 @@
 /// A single line item on a [Bill].
 class BillItem {
-  final int productId;
+  final String productId;
   final int qty;
   final double price;
 
@@ -13,7 +13,7 @@ class BillItem {
   double get lineTotal => qty * price;
 
   factory BillItem.fromJson(Map<String, dynamic> json) => BillItem(
-        productId: json['productId'] as int,
+        productId: json['productId'] as String,
         qty: json['qty'] as int,
         price: (json['price'] as num).toDouble(),
       );
