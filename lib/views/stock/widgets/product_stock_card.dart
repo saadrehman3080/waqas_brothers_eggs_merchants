@@ -103,7 +103,7 @@ class ProductStockCard extends StatelessWidget {
           ),
 
           // ── Today's stock badge — only when update date is today ──
-          if (product.stockAddedToday > 0 && _isToday(product.updatedAtMs)) ...[
+          if (product.stockAddedToday > 0 && _isToday(product.stockAddedAtMs)) ...[
             const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),

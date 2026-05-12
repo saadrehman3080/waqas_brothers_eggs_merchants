@@ -6,11 +6,13 @@ import '../../core/theme/text_styles.dart';
 /// Generic empty/placeholder state used when a list has no rows.
 class EmptyState extends StatelessWidget {
   final String message;
+  final String? subtitle;
   final IconData icon;
 
   const EmptyState({
     super.key,
     required this.message,
+    this.subtitle,
     this.icon = Icons.inbox_outlined,
   });
 
@@ -40,7 +42,7 @@ class EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Get started by adding new bills',
+              subtitle ?? 'Get started by adding new bills',
               style: AppTextStyles.bodySm.copyWith(color: AppColors.ink600),
               textAlign: TextAlign.center,
             ),

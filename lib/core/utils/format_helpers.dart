@@ -18,6 +18,9 @@ class FormatHelpers {
   /// Today's date as `yyyy-MM-dd` for grouping/lookup keys.
   static String todayKey() => DateFormat('yyyy-MM-dd').format(DateTime.now());
 
+  /// Any [date] as `yyyy-MM-dd`.
+  static String dateKey(DateTime date) => DateFormat('yyyy-MM-dd').format(date);
+
   /// Day of week only `Saturday`.
   static String dayOfWeek([DateTime? at]) =>
       DateFormat('EEEE').format(at ?? DateTime.now());

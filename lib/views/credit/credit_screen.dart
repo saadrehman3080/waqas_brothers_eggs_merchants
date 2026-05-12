@@ -34,7 +34,7 @@ class _CreditScreenState extends State<CreditScreen> {
         .toList();
   }
 
-  Future<void> _markPaid(BuildContext context, int id) async {
+  Future<void> _markPaid(BuildContext context, String id) async {
     if (!context.mounted) return;
 
     // Show confirmation dialog
@@ -141,37 +141,36 @@ class _CreditScreenState extends State<CreditScreen> {
             ),
           ),
           Expanded(
-            child: groups.isEmpty
+            child: inventory.creditBillsLoading
+                ? const Center(child: CircularProgressIndicator())
+                : groups.isEmpty
                 ? const Center(
                     child: EmptyState(
                       message: 'No credit transactions',
                       icon: Icons.credit_card_off_outlined,
                     ),
                   )
-                : RefreshIndicator(
-                    onRefresh: inventory.refresh,
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(13, 12, 13, 16),
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      children: [
-                        if (grandTotal > 0) _OutstandingHero(total: grandTotal),
-                        const SizedBox(height: 12),
-                        for (final group in groups)
-                          CreditGroupCard(
-                            group: group,
-                            expanded: _expanded == group.name,
-                            onToggle: () => setState(() {
-                              _expanded = _expanded == group.name
-                                  ? null
-                                  : group.name;
-                            }),
-                            productLookup: inventory.productById,
-                            onMarkPaid: (bill) => _markPaid(context, bill.id),
-                            onReprint: (bill) =>
-                                CustomSnackbar.info(context, 'Reprint queued'),
-                          ),
-                      ],
-                    ),
+                : ListView(
+                    padding: const EdgeInsets.fromLTRB(13, 12, 13, 16),
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: [
+                      if (grandTotal > 0) _OutstandingHero(total: grandTotal),
+                      const SizedBox(height: 12),
+                      for (final group in groups)
+                        CreditGroupCard(
+                          group: group,
+                          expanded: _expanded == group.name,
+                          onToggle: () => setState(() {
+                            _expanded = _expanded == group.name
+                                ? null
+                                : group.name;
+                          }),
+                          productLookup: inventory.productById,
+                          onMarkPaid: (bill) => _markPaid(context, bill.id),
+                          onReprint: (bill) =>
+                              CustomSnackbar.info(context, 'Reprint queued'),
+                        ),
+                    ],
                   ),
           ),
         ],

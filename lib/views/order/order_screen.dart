@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
 import '../../core/theme/color_schemes.dart';
 import '../../core/utils/custom_snackbar.dart';
 import '../../viewmodels/inventory_viewmodel.dart';
@@ -57,7 +56,9 @@ class _OrderView extends StatelessWidget {
                   )
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 13, vertical: 10),
+                      horizontal: 13,
+                      vertical: 10,
+                    ),
                     itemCount: products.length,
                     itemBuilder: (_, i) {
                       final p = products[i];

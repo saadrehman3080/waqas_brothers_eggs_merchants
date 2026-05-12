@@ -1,97 +1,41 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
-import '../core/utils/format_helpers.dart';
 import '../models/bill.dart';
 import '../models/bill_item.dart';
-import '../models/printer_device.dart';
 import '../models/product.dart';
-/// Firestore-backed data service. All reads and writes go directly to
-/// Cloud Firestore — no local state is kept here.
+
+/// Firestore-backed data service. Every read and write goes directly to
+/// Cloud Firestore.
 class DataService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   CollectionReference<Map<String, dynamic>> get _products =>
       _db.collection('products');
-  CollectionReference<Map<String, dynamic>> get _bills =>
-      _db.collection('bills');
 
   // ── Products ───────────────────────────────────────────────
-  Future<List<Product>> getProducts() async {
-    final snap = await _products.get();
-    return snap.docs.map((d) => _productFromDoc(d)).toList();
+  Stream<List<Product>> watchProducts() {
+    return _products.snapshots().map(
+          (snap) => snap.docs.map(_productFromDoc).toList(),
+        );
   }
 
-  Future<Product> addProduct({
-    required String nameEn,
-    required String nameUr,
-    required double price,
-    double revenuePerUnit = 0,
-  }) async {
-    final ref = _products.doc(); // Firestore auto-generated ID
-    final product = Product(
-      id: ref.id,
-      nameEn: nameEn,
-      nameUr: nameUr,
-      price: price,
-      stock: 0,
-      sold: 0,
-      revenuePerUnit: revenuePerUnit,
-    );
-    await ref.set({
-      ...product.toJson(),
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-    return product;
-  }
-
-  Future<Product> updateProduct({
+  Future<void> updateProduct({
     required String id,
     required String nameEn,
     required String nameUr,
     required double price,
     double revenuePerUnit = 0,
   }) async {
-    final ref = _products.doc(id);
-    final snap = await ref.get();
-    if (!snap.exists) throw StateError('Product $id not found');
-    final current = _productFromDoc(snap);
-    final updated = current.copyWith(
-      nameEn: nameEn,
-      nameUr: nameUr,
-      price: price,
-      revenuePerUnit: revenuePerUnit,
-    );
-    await ref.update({
-      ...updated.toJson(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-    return updated;
-  }
-
-  Future<Product> updateProductRevenuePerUnit({
-    required String id,
-    required double revenuePerUnit,
-  }) async {
-    final ref = _products.doc(id);
-    final snap = await ref.get();
-    if (!snap.exists) throw StateError('Product $id not found');
-    final updated =
-        _productFromDoc(snap).copyWith(revenuePerUnit: revenuePerUnit);
-    await ref.update({
+    await _products.doc(id).update({
+      'nameEn': nameEn,
+      'nameUr': nameUr,
+      'price': price,
       'revenuePerUnit': revenuePerUnit,
-      'updatedAt': FieldValue.serverTimestamp(),
     });
-    return updated;
   }
 
   // ── Bills ──────────────────────────────────────────────────
-  Future<List<Bill>> getBills() async {
-    final snap = await _bills.orderBy('id', descending: true).get();
-    return snap.docs.map((d) => Bill.fromJson(d.data())).toList();
-  }
-
   Future<Bill> createBill({
     required Map<String, int> cart,
     required double discount,
@@ -99,8 +43,10 @@ class DataService {
     required String customer,
     required String device,
   }) async {
-    final products = await getProducts();
-    final productMap = {for (final p in products) p.id: p};
+    final productsSnap = await _products.get();
+    final productMap = {
+      for (final d in productsSnap.docs) d.id: _productFromDoc(d),
+    };
 
     final items = <BillItem>[];
     double subtotal = 0;
@@ -113,47 +59,99 @@ class DataService {
     });
     if (items.isEmpty) throw StateError('Cannot create an empty bill');
 
+    final now = DateTime.now();
     final total = (subtotal - discount).clamp(0, double.infinity).toDouble();
-    final id = DateTime.now().millisecondsSinceEpoch;
-    final bill = Bill(
-      id: id,
-      date: FormatHelpers.todayKey(),
-      time: FormatHelpers.timeNow(),
-      items: items,
-      total: total,
-      type: type,
-      customer: customer,
-      device: device,
-    );
+    final bill = switch (type) {
+      BillType.cash => CashBill(
+        id: now.millisecondsSinceEpoch.toString(),
+        items: items,
+        subtotal: subtotal,
+        discount: discount,
+        total: total,
+        customer: customer,
+        device: device,
+        createdAt: now,
+      ),
+      BillType.credit => CreditBill(
+        id: now.millisecondsSinceEpoch.toString(),
+        items: items,
+        subtotal: subtotal,
+        discount: discount,
+        total: total,
+        customer: customer,
+        device: device,
+        createdAt: now,
+      ),
+    };
 
     final batch = _db.batch();
-    batch.set(_bills.doc(id.toString()), {
-      ...bill.toJson(),
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+    batch.set(_db.doc(bill.firestorePath), bill.toJson());
     for (final item in items) {
       batch.update(_products.doc(item.productId), {
         'sold': FieldValue.increment(item.qty),
-        'updatedAt': FieldValue.serverTimestamp(),
       });
     }
     await batch.commit();
     return bill;
   }
 
-  Future<void> deleteBill(int id) async {
-    await _bills.doc(id.toString()).delete();
+  Future<List<CashBill>> fetchCashBillsForDate(String date) async {
+    final snap = await _db
+        .collection('daily_sale')
+        .doc(date)
+        .collection('records')
+        .get();
+    return snap.docs.map((d) => CashBill.fromMap(d.data())).toList();
   }
 
-  Future<Bill> changeBillType(int id, BillType type) async {
-    final ref = _bills.doc(id.toString());
-    final snap = await ref.get();
-    if (!snap.exists) throw StateError('Bill $id not found');
-    final updated = Bill.fromJson(snap.data()!).copyWith(type: type);
-    await ref.update({
-      'type': type.name,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
+  Stream<List<CashBill>> watchCashBillsForDate(String date) {
+    return _db
+        .collection('daily_sale')
+        .doc(date)
+        .collection('records')
+        .snapshots()
+        .map((snap) =>
+            snap.docs.map((d) => CashBill.fromMap(d.data())).toList());
+  }
+
+  Stream<List<CreditBill>> watchCreditBillsForDate(String date) {
+    return _db
+        .collection('credit_sale')
+        .doc(date)
+        .collection('records')
+        .snapshots()
+        .map((snap) =>
+            snap.docs.map((d) => CreditBill.fromMap(d.data())).toList());
+  }
+
+  Future<Bill> changeBillType(Bill bill, BillType newType) async {
+    if (bill.type == newType) return bill;
+    final updated = switch (newType) {
+      BillType.cash => CashBill(
+        id: bill.id,
+        items: bill.items,
+        subtotal: bill.subtotal,
+        discount: bill.discount,
+        total: bill.total,
+        customer: bill.customer,
+        device: bill.device,
+        createdAt: bill.createdAt,
+      ),
+      BillType.credit => CreditBill(
+        id: bill.id,
+        items: bill.items,
+        subtotal: bill.subtotal,
+        discount: bill.discount,
+        total: bill.total,
+        customer: bill.customer,
+        device: bill.device,
+        createdAt: bill.createdAt,
+      ),
+    };
+    final batch = _db.batch();
+    batch.delete(_db.doc(bill.firestorePath));
+    batch.set(_db.doc(updated.firestorePath), updated.toJson());
+    await batch.commit();
     return updated;
   }
 
@@ -167,33 +165,30 @@ class DataService {
       'stock': FieldValue.increment(qty),
       'stockAddedToday': FieldValue.increment(qty),
       'lastStockDevice': device,
-      'updatedAt': FieldValue.serverTimestamp(),
+      'stockAddedAt': FieldValue.serverTimestamp(),
     });
   }
 
-  // ── Printers ───────────────────────────────────────────────
-  Future<List<PrinterDevice>> getPairedPrinters() async => const [];
-
   // ── Helpers ────────────────────────────────────────────────
-  Product _productFromDoc(
-      DocumentSnapshot<Map<String, dynamic>> doc) {
+  Product _productFromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = Map<String, dynamic>.from(doc.data()!);
-    if (!data.containsKey('id')) data['id'] = doc.id;
-    final ts = data['updatedAt'];
+    data['id'] = doc.id;
+
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    final ts = data['stockAddedAt'];
     if (ts is Timestamp) {
       final dt = ts.toDate().toLocal();
-      const months = [
-        'Jan','Feb','Mar','Apr','May','Jun',
-        'Jul','Aug','Sep','Oct','Nov','Dec',
-      ];
-      final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
-      final m = dt.minute.toString().padLeft(2, '0');
-      final period = dt.hour < 12 ? 'AM' : 'PM';
-      data['updatedAt'] = '${dt.day} ${months[dt.month - 1]}  $hour:$m $period';
-      data['updatedAtMs'] = dt.millisecondsSinceEpoch;
+      final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+      final mn = dt.minute.toString().padLeft(2, '0');
+      final ampm = dt.hour < 12 ? 'AM' : 'PM';
+      data['stockAddedAt'] = '${dt.day} ${months[dt.month - 1]}  $h:$mn $ampm';
+      data['stockAddedAtMs'] = dt.millisecondsSinceEpoch;
     } else {
-      data['updatedAt'] = '';
-      data['updatedAtMs'] = 0;
+      data['stockAddedAt'] = '';
+      data['stockAddedAtMs'] = 0;
     }
     try {
       return Product.fromJson(data);

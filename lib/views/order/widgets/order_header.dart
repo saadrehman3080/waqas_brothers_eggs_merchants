@@ -44,7 +44,7 @@ class OrderHeader extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  hasItems ? FormatHelpers.currency(subtotal) : '—',
+                  hasItems ? FormatHelpers.currency(subtotal) : 'Rs. 0',
                   style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w800,

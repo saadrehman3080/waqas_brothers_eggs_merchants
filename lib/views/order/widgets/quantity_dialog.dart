@@ -12,11 +12,7 @@ class QuantityDialog extends StatefulWidget {
   final Product product;
   final int currentQty;
 
-  const QuantityDialog({
-    super.key,
-    required this.product,
-    this.currentQty = 0,
-  });
+  const QuantityDialog({super.key, required this.product, this.currentQty = 0});
 
   static Future<int?> show(
     BuildContext context, {
@@ -35,8 +31,7 @@ class QuantityDialog extends StatefulWidget {
 }
 
 class _QuantityDialogState extends State<QuantityDialog> {
-  late final int? _selected =
-      widget.currentQty > 0 ? widget.currentQty : null;
+  late final int? _selected = widget.currentQty > 0 ? widget.currentQty : null;
   final TextEditingController _customController = TextEditingController();
 
   static const List<int> _presets = [5, 10, 15, 25];
@@ -77,7 +72,20 @@ class _QuantityDialogState extends State<QuantityDialog> {
               widget.product.nameEn,
               style: const TextStyle(fontSize: 12, color: AppColors.ink600),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 6),
+            Text(
+              '${widget.product.remaining} in stock',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: widget.product.remaining <= 0
+                    ? AppColors.danger
+                    : widget.product.isLowStock
+                    ? AppColors.warning
+                    : AppColors.success,
+              ),
+            ),
+            const SizedBox(height: 14),
             GridView.count(
               crossAxisCount: 2,
               mainAxisSpacing: 8,
@@ -85,15 +93,25 @@ class _QuantityDialogState extends State<QuantityDialog> {
               childAspectRatio: 2.4,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              children:
-                  _presets.map((q) => _PresetTile(qty: q, selected: _selected == q, onTap: () => _commit(q))).toList(),
+              children: _presets.map((q) {
+                final enabled = q <= widget.product.remaining;
+                return _PresetTile(
+                  qty: q,
+                  selected: _selected == q,
+                  enabled: enabled,
+                  onTap: enabled ? () => _commit(q) : () {},
+                );
+              }).toList(),
             ),
             const SizedBox(height: 8),
             _PresetTile(
               qty: 100,
               selected: _selected == 100,
+              enabled: 100 <= widget.product.remaining,
               fullWidth: true,
-              onTap: () => _commit(100),
+              onTap: 100 <= widget.product.remaining
+                  ? () => _commit(100)
+                  : () {},
             ),
             const SizedBox(height: 12),
             Row(
@@ -111,7 +129,21 @@ class _QuantityDialogState extends State<QuantityDialog> {
                   label: 'Set',
                   onPressed: () {
                     final q = int.tryParse(_customController.text);
-                    if (q != null && q > 0) _commit(q);
+                    if (q != null && q > 0) {
+                      if (q > widget.product.remaining) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Maximum available: ${widget.product.remaining}',
+                            ),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                        _commit(widget.product.remaining);
+                      } else {
+                        _commit(q);
+                      }
+                    }
                   },
                 ),
               ],
@@ -133,6 +165,7 @@ class _QuantityDialogState extends State<QuantityDialog> {
 class _PresetTile extends StatelessWidget {
   final int qty;
   final bool selected;
+  final bool enabled;
   final bool fullWidth;
   final VoidCallback onTap;
 
@@ -140,22 +173,31 @@ class _PresetTile extends StatelessWidget {
     required this.qty,
     required this.selected,
     required this.onTap,
+    this.enabled = true,
     this.fullWidth = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final tile = InkWell(
-      onTap: onTap,
+      onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(10),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 13),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: selected ? AppColors.primarySoft : AppColors.background,
+          color: !enabled
+              ? AppColors.background
+              : selected
+              ? AppColors.primarySoft
+              : AppColors.background,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: selected ? AppColors.primary : AppColors.border,
+            color: !enabled
+                ? AppColors.border
+                : selected
+                ? AppColors.primary
+                : AppColors.border,
             width: 1.5,
           ),
         ),
@@ -164,7 +206,11 @@ class _PresetTile extends StatelessWidget {
           style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w700,
-            color: selected ? AppColors.primary : AppColors.ink900,
+            color: !enabled
+                ? AppColors.ink400
+                : selected
+                ? AppColors.primary
+                : AppColors.ink900,
           ),
         ),
       ),

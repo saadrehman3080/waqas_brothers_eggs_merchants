@@ -21,7 +21,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _selectedIndex = 4;
+  int _selectedIndex = 1;
 
   static const List<BottomNavItem> _navItems = [
     BottomNavItem(

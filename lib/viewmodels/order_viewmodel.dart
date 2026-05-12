@@ -44,6 +44,8 @@ class OrderViewModel extends ChangeNotifier {
       (subtotal - _discount).clamp(0, double.infinity).toDouble();
 
   void increment(String productId) {
+    final product = _inventory.productById(productId);
+    if (product != null && qtyOf(productId) >= product.remaining) return;
     _cart.update(productId, (q) => q + 1, ifAbsent: () => 1);
     notifyListeners();
   }
@@ -59,10 +61,13 @@ class OrderViewModel extends ChangeNotifier {
   }
 
   void setQty(String productId, int qty) {
-    if (qty <= 0) {
+    final product = _inventory.productById(productId);
+    final max = product != null ? product.remaining : qty;
+    final clamped = qty.clamp(0, max < 0 ? 0 : max);
+    if (clamped <= 0) {
       _cart.remove(productId);
     } else {
-      _cart[productId] = qty;
+      _cart[productId] = clamped;
     }
     notifyListeners();
   }

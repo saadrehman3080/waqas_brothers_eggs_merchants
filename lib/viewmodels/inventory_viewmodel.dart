@@ -1,22 +1,28 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../core/constants/app_strings.dart';
 import '../core/utils/device_name.dart';
 import '../core/utils/format_helpers.dart';
 import '../models/bill.dart';
-import '../models/printer_device.dart';
 import '../models/product.dart';
 import '../services/data_service.dart';
 
 enum InventoryState { initial, loading, loaded, error }
 
-/// Shared inventory state — products, bills, stock entries — used by every
-/// screen. Splitting this back out per-screen would mean reloading the same
-/// collections every tab switch, so we keep one source of truth here.
+/// Shared inventory state. All product and bill data flows in through live
+/// Firestore snapshot streams — subscribed once on startup and kept open
+/// for the lifetime of the viewmodel. Screens read reactive getters; they
+/// never trigger their own loads.
 class InventoryViewModel extends ChangeNotifier {
   InventoryViewModel(this._dataService);
 
   final DataService _dataService;
+
+  StreamSubscription<List<Product>>? _productsSub;
+  StreamSubscription<List<CashBill>>? _cashBillsSub;
+  StreamSubscription<List<CreditBill>>? _creditBillsSub;
 
   String? _cachedDeviceName;
   Future<String> _deviceName() async =>
@@ -26,9 +32,11 @@ class InventoryViewModel extends ChangeNotifier {
   String? _errorMessage;
 
   List<Product> _products = const [];
-  List<Bill> _bills = const [];
-  List<PrinterDevice> _printers = const [];
-  bool _printerOn = false;
+  List<CashBill> _cashBills = const [];
+  List<CreditBill> _creditBills = const [];
+
+  bool _cashBillsLoaded = false;
+  bool _creditBillsLoaded = false;
 
   // ── Getters ────────────────────────────────────────────────
   InventoryState get state => _state;
@@ -36,34 +44,73 @@ class InventoryViewModel extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
 
   List<Product> get products => List.unmodifiable(_products);
-  List<Bill> get bills => List.unmodifiable(_bills);
-  List<PrinterDevice> get printers => List.unmodifiable(_printers);
-  bool get printerOn => _printerOn;
+  List<Bill> get bills => [..._cashBills, ..._creditBills];
+
+  /// True until the cash-bills stream emits its first snapshot.
+  bool get cashBillsLoading => !_cashBillsLoaded;
+
+  /// True until the credit-bills stream emits its first snapshot.
+  bool get creditBillsLoading => !_creditBillsLoaded;
+
+  int get creditCount => _creditBills.length;
 
   // ── Loading ────────────────────────────────────────────────
   Future<void> load() async {
     _state = InventoryState.loading;
     _errorMessage = null;
     notifyListeners();
-    try {
-      final results = await Future.wait([
-        _dataService.getProducts(),
-        _dataService.getBills(),
-        _dataService.getPairedPrinters(),
-      ]);
-      _products = results[0] as List<Product>;
-      _bills = results[1] as List<Bill>;
-      _printers = results[2] as List<PrinterDevice>;
-      _state = InventoryState.loaded;
-    } catch (e) {
-      _state = InventoryState.error;
-      _errorMessage = e.toString();
-      debugPrint('InventoryViewModel.load failed: $e');
-    }
-    notifyListeners();
+
+    await _productsSub?.cancel();
+    _productsSub = _dataService.watchProducts().listen(
+      (products) {
+        _products = products;
+        if (_state != InventoryState.loaded) {
+          _state = InventoryState.loaded;
+        }
+        notifyListeners();
+      },
+      onError: (e) {
+        _state = InventoryState.error;
+        _errorMessage = e.toString();
+        debugPrint('watchProducts error: $e');
+        notifyListeners();
+      },
+    );
+
+    _subscribeTodayBills();
   }
 
-  Future<void> refresh() => load();
+  void _subscribeTodayBills() {
+    final today = FormatHelpers.todayKey();
+
+    _cashBillsSub?.cancel();
+    _cashBillsSub = _dataService.watchCashBillsForDate(today).listen(
+      (bills) {
+        _cashBills = bills;
+        _cashBillsLoaded = true;
+        notifyListeners();
+      },
+      onError: (e) => debugPrint('watchCashBills error: $e'),
+    );
+
+    _creditBillsSub?.cancel();
+    _creditBillsSub = _dataService.watchCreditBillsForDate(today).listen(
+      (bills) {
+        _creditBills = bills;
+        _creditBillsLoaded = true;
+        notifyListeners();
+      },
+      onError: (e) => debugPrint('watchCreditBills error: $e'),
+    );
+  }
+
+  @override
+  void dispose() {
+    _productsSub?.cancel();
+    _cashBillsSub?.cancel();
+    _creditBillsSub?.cancel();
+    super.dispose();
+  }
 
   // ── Lookups ────────────────────────────────────────────────
   Product? productById(String id) {
@@ -73,8 +120,6 @@ class InventoryViewModel extends ChangeNotifier {
     return null;
   }
 
-  int get creditCount => _bills.where((b) => b.type == BillType.credit).length;
-
   // ── Mutations ──────────────────────────────────────────────
   Future<bool> createBill({
     required Map<String, int> cart,
@@ -83,16 +128,13 @@ class InventoryViewModel extends ChangeNotifier {
     required String customer,
   }) async {
     try {
-      final bill = await _dataService.createBill(
+      await _dataService.createBill(
         cart: cart,
         discount: discount,
         type: type,
         customer: customer.isEmpty ? AppStrings.walkInCustomer : customer,
         device: await _deviceName(),
       );
-      _bills = [bill, ..._bills];
-      _products = await _dataService.getProducts();
-      notifyListeners();
       return true;
     } catch (e) {
       _errorMessage = e.toString();
@@ -102,11 +144,10 @@ class InventoryViewModel extends ChangeNotifier {
     }
   }
 
-  Future<bool> deleteBill(int id) async {
+  Future<bool> changeBillType(String id, BillType type) async {
     try {
-      await _dataService.deleteBill(id);
-      _bills = _bills.where((b) => b.id != id).toList();
-      notifyListeners();
+      final bill = bills.firstWhere((b) => b.id == id);
+      await _dataService.changeBillType(bill, type);
       return true;
     } catch (e) {
       _errorMessage = e.toString();
@@ -115,18 +156,8 @@ class InventoryViewModel extends ChangeNotifier {
     }
   }
 
-  Future<bool> changeBillType(int id, BillType type) async {
-    try {
-      final updated = await _dataService.changeBillType(id, type);
-      _bills = _bills.map((b) => b.id == id ? updated : b).toList();
-      notifyListeners();
-      return true;
-    } catch (e) {
-      _errorMessage = e.toString();
-      notifyListeners();
-      return false;
-    }
-  }
+  Future<List<CashBill>> fetchCashBillsForDate(String date) =>
+      _dataService.fetchCashBillsForDate(date);
 
   Future<bool> addStockEntry({
     required String productId,
@@ -138,31 +169,6 @@ class InventoryViewModel extends ChangeNotifier {
         qty: qty,
         device: await _deviceName(),
       );
-      _products = await _dataService.getProducts();
-      notifyListeners();
-      return true;
-    } catch (e) {
-      _errorMessage = e.toString();
-      notifyListeners();
-      return false;
-    }
-  }
-
-  Future<bool> addProduct({
-    required String nameEn,
-    required String nameUr,
-    required double price,
-    double revenuePerUnit = 0,
-  }) async {
-    try {
-      final product = await _dataService.addProduct(
-        nameEn: nameEn,
-        nameUr: nameUr,
-        price: price,
-        revenuePerUnit: revenuePerUnit,
-      );
-      _products = [..._products, product];
-      notifyListeners();
       return true;
     } catch (e) {
       _errorMessage = e.toString();
@@ -179,75 +185,32 @@ class InventoryViewModel extends ChangeNotifier {
     double revenuePerUnit = 0,
   }) async {
     try {
-      final product = await _dataService.updateProduct(
+      await _dataService.updateProduct(
         id: id,
         nameEn: nameEn,
         nameUr: nameUr,
         price: price,
         revenuePerUnit: revenuePerUnit,
       );
-      _products = _products.map((p) => p.id == id ? product : p).toList();
-      notifyListeners();
       return true;
     } catch (e) {
       _errorMessage = e.toString();
       notifyListeners();
       return false;
     }
-  }
-
-  Future<bool> updateProductRevenuePerUnit({
-    required String id,
-    required double revenuePerUnit,
-  }) async {
-    try {
-      final updated = await _dataService.updateProductRevenuePerUnit(
-        id: id,
-        revenuePerUnit: revenuePerUnit,
-      );
-      _products = _products.map((p) => p.id == id ? updated : p).toList();
-      notifyListeners();
-      return true;
-    } catch (e) {
-      _errorMessage = e.toString();
-      notifyListeners();
-      return false;
-    }
-  }
-
-  void togglePrinterAt(int index) {
-    if (index < 0 || index >= _printers.length) return;
-    final updated = List<PrinterDevice>.from(_printers);
-    final wasConnected = updated[index].isConnected;
-    for (var i = 0; i < updated.length; i++) {
-      updated[i] = updated[i].copyWith(isConnected: false);
-    }
-    updated[index] = updated[index].copyWith(isConnected: !wasConnected);
-    _printers = updated;
-    _printerOn = !wasConnected;
-    notifyListeners();
-  }
-
-  void togglePrinter() {
-    if (_printers.isEmpty) {
-      _printerOn = !_printerOn;
-      notifyListeners();
-      return;
-    }
-    togglePrinterAt(0);
   }
 
   // ── Aggregates ─────────────────────────────────────────────
   List<Bill> _todayBills() {
     final today = FormatHelpers.todayKey();
-    return _bills.where((b) => b.date == today).toList();
+    return bills.where((b) => b.date == today).toList();
   }
 
   List<Bill> _currentMonthBills() {
     final now = DateTime.now();
     final prefix =
         '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}';
-    return _bills.where((b) => b.date.startsWith(prefix)).toList();
+    return bills.where((b) => b.date.startsWith(prefix)).toList();
   }
 
   double get todayCash => _todayBills()
@@ -260,7 +223,6 @@ class InventoryViewModel extends ChangeNotifier {
 
   int get todayCustomerCount => _todayBills().length;
 
-  /// Units of [productId] sold today.
   int productQtyToday(String productId) {
     return _todayBills().fold<int>(0, (sum, b) {
       for (final item in b.items) {
@@ -270,8 +232,6 @@ class InventoryViewModel extends ChangeNotifier {
     });
   }
 
-  /// Units sold today for the product whose [nameEn] matches. Used by the
-  /// dashboard which knows product names but not Firestore-generated IDs.
   int productQtyTodayByName(String nameEn) {
     final product = _products.firstWhere(
       (p) => p.nameEn == nameEn,
@@ -295,7 +255,6 @@ class InventoryViewModel extends ChangeNotifier {
     return total;
   }
 
-  /// Monthly aggregates computed from Firestore-loaded bills.
   Map<String, String> get monthlySummary {
     final monthBills = _currentMonthBills();
     if (monthBills.isEmpty) {

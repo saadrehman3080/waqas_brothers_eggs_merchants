@@ -84,13 +84,13 @@ class _StockView extends StatelessWidget {
                   );
                 }
                 final ref = products.reduce(
-                  (a, b) => b.updatedAtMs > a.updatedAtMs ? b : a,
+                  (a, b) => b.stockAddedAtMs > a.stockAddedAtMs ? b : a,
                 );
                 final showBanner =
-                    ref.updatedAt.isNotEmpty || ref.lastStockDevice.isNotEmpty;
+                    ref.stockAddedAt.isNotEmpty || ref.lastStockDevice.isNotEmpty;
                 final now = DateTime.now();
-                final lastUpdate = ref.updatedAtMs > 0
-                    ? DateTime.fromMillisecondsSinceEpoch(ref.updatedAtMs)
+                final lastUpdate = ref.stockAddedAtMs > 0
+                    ? DateTime.fromMillisecondsSinceEpoch(ref.stockAddedAtMs)
                     : null;
                 final isToday = lastUpdate != null &&
                     lastUpdate.year == now.year &&
@@ -101,26 +101,23 @@ class _StockView extends StatelessWidget {
                         .where((p) => p.nameEn == 'Patty')
                         .fold<int>(0, (sum, p) => sum + p.stockAddedToday)
                     : 0;
-                return RefreshIndicator(
-                  onRefresh: inventory.refresh,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(13, 11, 13, 16),
-                    itemCount: products.length + (showBanner ? 1 : 0),
-                    itemBuilder: (_, i) {
-                      if (showBanner && i == 0) {
-                        return _LastUpdatedBanner(
-                          updatedAt: ref.updatedAt,
-                          device: ref.lastStockDevice,
-                          pattiesAddedToday: pattiesAddedToday,
-                        );
-                      }
-                      final p = products[showBanner ? i - 1 : i];
-                      return ProductStockCard(
-                        product: p,
-                        onEdit: () => stock.showEditProduct(p),
+                return ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(13, 11, 13, 16),
+                  itemCount: products.length + (showBanner ? 1 : 0),
+                  itemBuilder: (_, i) {
+                    if (showBanner && i == 0) {
+                      return _LastUpdatedBanner(
+                        updatedAt: ref.stockAddedAt,
+                        device: ref.lastStockDevice,
+                        pattiesAddedToday: pattiesAddedToday,
                       );
-                    },
-                  ),
+                    }
+                    final p = products[showBanner ? i - 1 : i];
+                    return ProductStockCard(
+                      product: p,
+                      onEdit: () => stock.showEditProduct(p),
+                    );
+                  },
                 );
               }(),
               StockView.addStock => SingleChildScrollView(

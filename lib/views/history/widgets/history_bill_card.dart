@@ -12,7 +12,6 @@ class HistoryBillCard extends StatelessWidget {
   final VoidCallback onToggle;
   final VoidCallback onConvertToCredit;
   final VoidCallback onReprint;
-  final VoidCallback onDelete;
   final Product? Function(String) productLookup;
 
   const HistoryBillCard({
@@ -22,7 +21,6 @@ class HistoryBillCard extends StatelessWidget {
     required this.onToggle,
     required this.onConvertToCredit,
     required this.onReprint,
-    required this.onDelete,
     required this.productLookup,
   });
 
@@ -33,7 +31,7 @@ class HistoryBillCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: AppColors.border, width: 1.5),
       ),
       child: Column(
         children: [
@@ -73,7 +71,7 @@ class HistoryBillCard extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.ink900,
+                      color: AppColors.success,
                     ),
                   ),
                 ],
@@ -86,7 +84,6 @@ class HistoryBillCard extends StatelessWidget {
               productLookup: productLookup,
               onConvertToCredit: onConvertToCredit,
               onReprint: onReprint,
-              onDelete: onDelete,
             ),
         ],
       ),
@@ -99,14 +96,12 @@ class _ExpandedActions extends StatelessWidget {
   final Product? Function(String) productLookup;
   final VoidCallback onConvertToCredit;
   final VoidCallback onReprint;
-  final VoidCallback onDelete;
 
   const _ExpandedActions({
     required this.bill,
     required this.productLookup,
     required this.onConvertToCredit,
     required this.onReprint,
-    required this.onDelete,
   });
 
   @override
@@ -121,46 +116,23 @@ class _ExpandedActions extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Bill #${bill.id}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.ink900,
-                          ),
-                        ),
-                        const SizedBox(height: 1),
-                        Text(
-                          '${bill.date} · ${bill.time}',
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: AppColors.ink600,
-                          ),
-                        ),
-                        const SizedBox(height: 1),
-                        Text(
-                          'Device: ${bill.device}',
-                          style: const TextStyle(
-                            fontSize: 9,
-                            color: AppColors.ink400,
-                          ),
-                        ),
-                      ],
+                  Text(
+                    'Bill #${bill.id}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.ink600,
                     ),
                   ),
+                  const SizedBox(height: 2),
                   Text(
-                    FormatHelpers.currency(bill.total),
+                    'Device: ${bill.device}',
                     style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.ink900,
+                      fontSize: 10,
+                      color: AppColors.ink400,
                     ),
                   ),
                 ],
@@ -174,7 +146,7 @@ class _ExpandedActions extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: AppColors.surface,
                   borderRadius: BorderRadius.circular(9),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: AppColors.borderDark),
                 ),
                 child: Column(
                   children: List.generate(bill.items.length, (i) {
@@ -214,6 +186,42 @@ class _ExpandedActions extends StatelessWidget {
                   }),
                 ),
               ),
+              if (bill.discount > 0) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(9),
+                    border: Border.all(color: AppColors.borderDark),
+                  ),
+                  child: Column(
+                    children: [
+                      _SummaryRow(
+                        label: 'Subtotal',
+                        value: FormatHelpers.currency(bill.subtotal),
+                        color: AppColors.ink600,
+                      ),
+                      const SizedBox(height: 4),
+                      _SummaryRow(
+                        label: 'Discount',
+                        value: '− ${FormatHelpers.currency(bill.discount)}',
+                        color: AppColors.danger,
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 6),
+                        child: Divider(height: 1, color: AppColors.border),
+                      ),
+                      _SummaryRow(
+                        label: 'Total',
+                        value: FormatHelpers.currency(bill.total),
+                        color: AppColors.success,
+                        bold: true,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 10),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -232,17 +240,48 @@ class _ExpandedActions extends StatelessWidget {
                     icon: Icons.print_outlined,
                     onPressed: onReprint,
                   ),
-                  const SizedBox(width: 7),
-                  AppButton(
-                    label: 'Delete',
-                    small: true,
-                    variant: AppButtonVariant.danger,
-                    icon: Icons.delete_outline,
-                    onPressed: onDelete,
-                  ),
                 ],
               ),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SummaryRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  final bool bold;
+
+  const _SummaryRow({
+    required this.label,
+    required this.value,
+    required this.color,
+    this.bold = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: bold ? AppColors.ink900 : AppColors.ink600,
+            fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 11,
+            color: color,
+            fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
           ),
         ),
       ],
