@@ -16,8 +16,8 @@ class DataService {
   // ── Products ───────────────────────────────────────────────
   Stream<List<Product>> watchProducts() {
     return _products.snapshots().map(
-          (snap) => snap.docs.map(_productFromDoc).toList(),
-        );
+      (snap) => snap.docs.map(_productFromDoc).toList(),
+    );
   }
 
   Future<void> updateProduct({
@@ -95,6 +95,23 @@ class DataService {
     return bill;
   }
 
+  Future<List<({CashBill bill, DateTime deletedAt})>> fetchDeletedCashBillsForDate(
+      String date) async {
+    final snap = await _db
+        .collection('deleted_bills')
+        .doc('cash_records')
+        .collection(date)
+        .get();
+    return snap.docs.map((d) {
+      final data = d.data();
+      final bill = CashBill.fromMap(data);
+      final ts = data['deletedAt'];
+      final deletedAt =
+          ts is Timestamp ? ts.toDate() : DateTime.now();
+      return (bill: bill, deletedAt: deletedAt);
+    }).toList();
+  }
+
   Future<List<CashBill>> fetchCashBillsForDate(String date) async {
     final snap = await _db
         .collection('daily_sale')
@@ -110,8 +127,9 @@ class DataService {
         .doc(date)
         .collection('records')
         .snapshots()
-        .map((snap) =>
-            snap.docs.map((d) => CashBill.fromMap(d.data())).toList());
+        .map(
+          (snap) => snap.docs.map((d) => CashBill.fromMap(d.data())).toList(),
+        );
   }
 
   Stream<List<CreditBill>> watchCreditBillsForDate(String date) {
@@ -120,8 +138,29 @@ class DataService {
         .doc(date)
         .collection('records')
         .snapshots()
-        .map((snap) =>
-            snap.docs.map((d) => CreditBill.fromMap(d.data())).toList());
+        .map(
+          (snap) => snap.docs.map((d) => CreditBill.fromMap(d.data())).toList(),
+        );
+  }
+
+  Future<void> deleteCashBill(CashBill bill) async {
+    final archive = _db
+        .collection('deleted_bills')
+        .doc('cash_records')
+        .collection(bill.date)
+        .doc(bill.id);
+    final batch = _db.batch();
+    batch.set(archive, {
+      ...bill.toJson(),
+      'deletedAt': FieldValue.serverTimestamp(),
+    });
+    batch.delete(_db.doc(bill.firestorePath));
+    for (final item in bill.items) {
+      batch.update(_products.doc(item.productId), {
+        'sold': FieldValue.increment(-item.qty),
+      });
+    }
+    await batch.commit();
   }
 
   Future<Bill> changeBillType(Bill bill, BillType newType) async {
@@ -175,8 +214,18 @@ class DataService {
     data['id'] = doc.id;
 
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     final ts = data['stockAddedAt'];
     if (ts is Timestamp) {

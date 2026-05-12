@@ -159,6 +159,22 @@ class InventoryViewModel extends ChangeNotifier {
   Future<List<CashBill>> fetchCashBillsForDate(String date) =>
       _dataService.fetchCashBillsForDate(date);
 
+  Future<List<({CashBill bill, DateTime deletedAt})>> fetchDeletedCashBillsForDate(
+          String date) =>
+      _dataService.fetchDeletedCashBillsForDate(date);
+
+  Future<bool> deleteCashBill(String id) async {
+    try {
+      final bill = _cashBills.firstWhere((b) => b.id == id);
+      await _dataService.deleteCashBill(bill);
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
   Future<bool> addStockEntry({
     required String productId,
     required int qty,

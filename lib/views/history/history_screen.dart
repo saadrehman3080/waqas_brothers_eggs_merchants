@@ -10,6 +10,7 @@ import '../../models/bill.dart';
 import '../../viewmodels/inventory_viewmodel.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/top_bar.dart';
+import 'widgets/deleted_bill_card.dart';
 import 'widgets/history_bill_card.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -24,6 +25,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
   DateTime _selectedDate = DateTime.now();
   List<CashBill>? _historicalBills; // null = use today's live stream
   bool _dateLoading = false;
+
+  bool _showDeleted = false;
+  List<({CashBill bill, DateTime deletedAt})> _deletedBills = const [];
+  bool _deletedLoading = false;
 
   bool get _isToday {
     final now = DateTime.now();
@@ -70,6 +75,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
       _selectedDate = picked;
       _historicalBills = null;
       _expandedId = null;
+      _showDeleted = false;
+      _deletedBills = const [];
     });
 
     if (_isToday) return; // live stream already has today
@@ -82,6 +89,92 @@ class _HistoryScreenState extends State<HistoryScreen> {
       _historicalBills = bills;
       _dateLoading = false;
     });
+  }
+
+  Future<void> _toggleDeletedBills() async {
+    if (_showDeleted) {
+      setState(() {
+        _showDeleted = false;
+        _expandedId = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _showDeleted = true;
+      _deletedLoading = true;
+      _expandedId = null;
+    });
+
+    final date = FormatHelpers.dateKey(_selectedDate);
+    final deleted = await context.read<InventoryViewModel>().fetchDeletedCashBillsForDate(date);
+    if (!mounted) return;
+    setState(() {
+      _deletedBills = deleted;
+      _deletedLoading = false;
+    });
+  }
+
+  Future<void> _deleteBill(BuildContext context, String id) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: AppColors.overlay,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Delete Bill?',
+                style: AppTextStyles.screenTitle.copyWith(color: AppColors.danger),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'This bill will be removed from history and archived. This cannot be undone.',
+                textAlign: TextAlign.center,
+                style: AppTextStyles.bodySm,
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, false),
+                    style: TextButton.styleFrom(foregroundColor: AppColors.ink600),
+                    child: Text('Cancel', style: AppTextStyles.buttonSm),
+                  ),
+                  const SizedBox(width: 12),
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, true),
+                    style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+                    child: Text('Delete', style: AppTextStyles.buttonSm),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    ) ?? false;
+
+    if (!confirmed || !context.mounted) return;
+    final ok = await context.read<InventoryViewModel>().deleteCashBill(id);
+    if (!context.mounted) return;
+    if (ok) {
+      setState(() => _expandedId = null);
+      CustomSnackbar.info(context, 'Bill deleted');
+    } else {
+      CustomSnackbar.error(context, 'Failed to delete bill');
+    }
   }
 
   Future<void> _convertToCredit(BuildContext context, String id) async {
@@ -284,6 +377,73 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     final isLoading = _isToday ? inventory.cashBillsLoading : _dateLoading;
 
+    Widget body;
+    if (_showDeleted) {
+      if (_deletedLoading) {
+        body = const Center(child: CircularProgressIndicator());
+      } else if (_deletedBills.isEmpty) {
+        body = Center(
+          child: EmptyState(
+            icon: Icons.delete_sweep_outlined,
+            message: 'No deleted bills',
+            subtitle: 'No bills were deleted on ${FormatHelpers.headerDate(_selectedDate)}.',
+          ),
+        );
+      } else {
+        final sorted = [..._deletedBills]
+          ..sort((a, b) => b.deletedAt.compareTo(a.deletedAt));
+        body = ListView.builder(
+          padding: const EdgeInsets.fromLTRB(13, 7, 13, 16),
+          itemCount: sorted.length,
+          itemBuilder: (_, i) {
+            final entry = sorted[i];
+            return DeletedBillCard(
+              bill: entry.bill,
+              deletedAt: entry.deletedAt,
+              expanded: _expandedId == entry.bill.id,
+              onToggle: () => setState(() {
+                _expandedId = _expandedId == entry.bill.id ? null : entry.bill.id;
+              }),
+              productLookup: inventory.productById,
+            );
+          },
+        );
+      }
+    } else if (isLoading) {
+      body = const Center(child: CircularProgressIndicator());
+    } else if (cashBills.isEmpty) {
+      body = Center(
+        child: EmptyState(
+          icon: Icons.receipt_long_outlined,
+          message: _isToday
+              ? 'No cash sales today'
+              : 'No bills on ${FormatHelpers.headerDate(_selectedDate)}',
+          subtitle: _isToday
+              ? 'Cash bills will appear here once created.'
+              : 'No cash sales were recorded for this date.',
+        ),
+      );
+    } else {
+      body = ListView.builder(
+        padding: const EdgeInsets.fromLTRB(13, 7, 13, 16),
+        itemCount: cashBills.length,
+        itemBuilder: (_, i) {
+          final b = cashBills[i];
+          return HistoryBillCard(
+            bill: b,
+            expanded: _expandedId == b.id,
+            onToggle: () => setState(() {
+              _expandedId = _expandedId == b.id ? null : b.id;
+            }),
+            productLookup: inventory.productById,
+            onConvertToCredit: () => _convertToCredit(context, b.id),
+            onReprint: () => CustomSnackbar.info(context, 'Reprint queued'),
+            onDelete: () => _deleteBill(context, b.id),
+          );
+        },
+      );
+    }
+
     return Container(
       color: AppColors.background,
       child: Column(
@@ -338,6 +498,48 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   ),
                 ),
                 const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: _toggleDeletedBills,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _showDeleted
+                          ? AppColors.dangerSoft
+                          : AppColors.background,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: _showDeleted
+                            ? AppColors.danger
+                            : AppColors.border,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.delete_sweep_outlined,
+                          size: 11,
+                          color: _showDeleted
+                              ? AppColors.danger
+                              : AppColors.ink600,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          'Deleted',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: _showDeleted
+                                ? AppColors.danger
+                                : AppColors.ink600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -358,41 +560,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               ],
             ),
           ),
-          Expanded(
-            child: isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : cashBills.isEmpty
-                ? Center(
-                    child: EmptyState(
-                      icon: Icons.receipt_long_outlined,
-                      message: _isToday
-                          ? 'No cash sales today'
-                          : 'No bills on ${FormatHelpers.headerDate(_selectedDate)}',
-                      subtitle: _isToday
-                          ? 'Cash bills will appear here once created.'
-                          : 'No cash sales were recorded for this date.',
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(13, 7, 13, 16),
-                    itemCount: cashBills.length,
-                    itemBuilder: (_, i) {
-                      final b = cashBills[i];
-                      return HistoryBillCard(
-                        bill: b,
-                        expanded: _expandedId == b.id,
-                        onToggle: () => setState(() {
-                          _expandedId = _expandedId == b.id ? null : b.id;
-                        }),
-                        productLookup: inventory.productById,
-                        onConvertToCredit: () =>
-                            _convertToCredit(context, b.id),
-                        onReprint: () =>
-                            CustomSnackbar.info(context, 'Reprint queued'),
-                      );
-                    },
-                  ),
-          ),
+          Expanded(child: body),
         ],
       ),
     );

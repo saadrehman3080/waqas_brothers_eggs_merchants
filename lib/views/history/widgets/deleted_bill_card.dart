@@ -4,27 +4,33 @@ import '../../../core/theme/color_schemes.dart';
 import '../../../core/utils/format_helpers.dart';
 import '../../../models/bill.dart';
 import '../../../models/product.dart';
-import '../../widgets/app_button.dart';
 
-class HistoryBillCard extends StatelessWidget {
-  final Bill bill;
+class DeletedBillCard extends StatelessWidget {
+  final CashBill bill;
+  final DateTime deletedAt;
   final bool expanded;
   final VoidCallback onToggle;
-  final VoidCallback onConvertToCredit;
-  final VoidCallback onReprint;
-  final VoidCallback onDelete;
   final Product? Function(String) productLookup;
 
-  const HistoryBillCard({
+  const DeletedBillCard({
     super.key,
     required this.bill,
+    required this.deletedAt,
     required this.expanded,
     required this.onToggle,
-    required this.onConvertToCredit,
-    required this.onReprint,
-    required this.onDelete,
     required this.productLookup,
   });
+
+  String _formatDeletedAt() {
+    final h = deletedAt.hour % 12 == 0 ? 12 : deletedAt.hour % 12;
+    final mn = deletedAt.minute.toString().padLeft(2, '0');
+    final ampm = deletedAt.hour < 12 ? 'AM' : 'PM';
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${deletedAt.day} ${months[deletedAt.month - 1]}  $h:$mn $ampm';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +39,7 @@ class HistoryBillCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: AppColors.border, width: 1.5),
+        border: Border.all(color: AppColors.dangerSoftBorder, width: 1.5),
       ),
       child: Column(
         children: [
@@ -68,45 +74,62 @@ class HistoryBillCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  Text(
-                    FormatHelpers.currency(bill.total),
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.success,
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        FormatHelpers.currency(bill.total),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.ink600,
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.dangerSoft,
+                          borderRadius: BorderRadius.circular(6),
+                          border:
+                              Border.all(color: AppColors.dangerSoftBorder),
+                        ),
+                        child: const Text(
+                          'Deleted',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.danger,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
           ),
-          if (expanded)
-            _ExpandedActions(
-              bill: bill,
-              productLookup: productLookup,
-              onConvertToCredit: onConvertToCredit,
-              onReprint: onReprint,
-              onDelete: onDelete,
-            ),
+          if (expanded) _DeletedBillDetails(
+            bill: bill,
+            deletedAt: _formatDeletedAt(),
+            productLookup: productLookup,
+          ),
         ],
       ),
     );
   }
 }
 
-class _ExpandedActions extends StatelessWidget {
-  final Bill bill;
+class _DeletedBillDetails extends StatelessWidget {
+  final CashBill bill;
+  final String deletedAt;
   final Product? Function(String) productLookup;
-  final VoidCallback onConvertToCredit;
-  final VoidCallback onReprint;
-  final VoidCallback onDelete;
 
-  const _ExpandedActions({
+  const _DeletedBillDetails({
     required this.bill,
+    required this.deletedAt,
     required this.productLookup,
-    required this.onConvertToCredit,
-    required this.onReprint,
-    required this.onDelete,
   });
 
   @override
@@ -114,30 +137,59 @@ class _ExpandedActions extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(height: 1, color: AppColors.border),
+        Container(height: 1, color: AppColors.dangerSoftBorder),
         Container(
           color: AppColors.background,
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Column(
+              Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Bill #${bill.id}',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.ink600,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Device: ${bill.device}',
-                    style: const TextStyle(
-                      fontSize: 10,
-                      color: AppColors.ink400,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Bill #${bill.id}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.ink600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        RichText(
+                          text: TextSpan(
+                            children: [
+                              const TextSpan(
+                                text: 'Deleted by: ',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: AppColors.ink400,
+                                ),
+                              ),
+                              TextSpan(
+                                text: bill.device,
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.danger,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'At: $deletedAt',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: AppColors.ink400,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -194,7 +246,8 @@ class _ExpandedActions extends StatelessWidget {
               if (bill.discount > 0) ...[
                 const SizedBox(height: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
                   decoration: BoxDecoration(
                     color: AppColors.surface,
                     borderRadius: BorderRadius.circular(9),
@@ -202,13 +255,13 @@ class _ExpandedActions extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
-                      _SummaryRow(
+                      _Row(
                         label: 'Subtotal',
                         value: FormatHelpers.currency(bill.subtotal),
                         color: AppColors.ink600,
                       ),
                       const SizedBox(height: 4),
-                      _SummaryRow(
+                      _Row(
                         label: 'Discount',
                         value: '− ${FormatHelpers.currency(bill.discount)}',
                         color: AppColors.danger,
@@ -217,44 +270,16 @@ class _ExpandedActions extends StatelessWidget {
                         padding: EdgeInsets.symmetric(vertical: 6),
                         child: Divider(height: 1, color: AppColors.border),
                       ),
-                      _SummaryRow(
+                      _Row(
                         label: 'Total',
                         value: FormatHelpers.currency(bill.total),
-                        color: AppColors.success,
+                        color: AppColors.ink900,
                         bold: true,
                       ),
                     ],
                   ),
                 ),
               ],
-              const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  AppButton(
-                    label: '→ Credit',
-                    small: true,
-                    variant: AppButtonVariant.soft,
-                    onPressed: onConvertToCredit,
-                  ),
-                  const SizedBox(width: 7),
-                  AppButton(
-                    label: 'Reprint',
-                    small: true,
-                    variant: AppButtonVariant.ghost,
-                    icon: Icons.print_outlined,
-                    onPressed: onReprint,
-                  ),
-                  const SizedBox(width: 7),
-                  AppButton(
-                    label: 'Delete',
-                    small: true,
-                    variant: AppButtonVariant.danger,
-                    icon: Icons.delete_outline_rounded,
-                    onPressed: onDelete,
-                  ),
-                ],
-              ),
             ],
           ),
         ),
@@ -263,13 +288,13 @@ class _ExpandedActions extends StatelessWidget {
   }
 }
 
-class _SummaryRow extends StatelessWidget {
+class _Row extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
   final bool bold;
 
-  const _SummaryRow({
+  const _Row({
     required this.label,
     required this.value,
     required this.color,
