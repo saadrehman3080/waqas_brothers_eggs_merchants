@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 
-import '../core/utils/egg_units.dart';
 import '../models/product.dart';
 import 'inventory_viewmodel.dart';
 
@@ -23,24 +22,22 @@ class StockViewModel extends ChangeNotifier {
   String nameUr = '';
   String priceText = '';
   String revenuePerUnitText = '';
+  String eggsPerUnitText = '';
 
   void setNameEn(String v) => nameEn = v;
   void setNameUr(String v) => nameUr = v;
   void setPriceText(String v) => priceText = v;
   void setRevenuePerUnitText(String v) => revenuePerUnitText = v;
+  void setEggsPerUnitText(String v) => eggsPerUnitText = v;
 
-  // ── Add-stock form: productId → raw qty text ───────────────
-  final Map<String, String> _stockQtyMap = {};
-
-  // Formula converter fields (display state; drives _stockQtyMap for egg products)
+  // ── Add-stock formula fields ───────────────────────────────
+  // Cross-fill display state — the single-egg count is the canonical value.
   String formulaPattyText = '';
   String formulaTrayText = '';
   String formulaDozenText = '';
   String formulaSingleText = '';
 
   List<Product> get products => _inventory.products;
-
-  String stockQtyTextFor(String productId) => _stockQtyMap[productId] ?? '';
 
   // ── View transitions ───────────────────────────────────────
   void showList() {
@@ -62,28 +59,25 @@ class StockViewModel extends ChangeNotifier {
     nameUr = product.nameUr;
     priceText = product.price.toStringAsFixed(0);
     revenuePerUnitText = product.revenuePerUnit.toStringAsFixed(0);
+    eggsPerUnitText = product.eggsPerUnit > 0 ? '${product.eggsPerUnit}' : '';
     _view = StockView.editProduct;
     notifyListeners();
   }
 
-  // ── Stock qty field setters ────────────────────────────────
-  void setStockQtyText(String productId, String text) {
-    _stockQtyMap[productId] = _digits(text);
-  }
-
-  // ── Formula field setters ──────────────────────────────────
+  // ── Formula field setters (cross-fill using EggUnits) ─────
   void setFormulaPatty(String raw) {
     formulaPattyText = _digits(raw);
     final n = int.tryParse(formulaPattyText) ?? 0;
     if (n > 0) {
-      final r = EggUnits.fromPatties(n);
-      formulaTrayText = '${r.trays}';
-      formulaDozenText = '${r.dozens}';
-      formulaSingleText = '${r.eggs}';
+      final trays = n * 12;
+      final eggs = trays * 30;
+      final dozens = eggs ~/ 12;
+      formulaTrayText = '$trays';
+      formulaDozenText = '$dozens';
+      formulaSingleText = '$eggs';
     } else {
       formulaTrayText = formulaDozenText = formulaSingleText = '';
     }
-    _applyFormulaToProducts();
     notifyListeners();
   }
 
@@ -91,14 +85,15 @@ class StockViewModel extends ChangeNotifier {
     formulaTrayText = _digits(raw);
     final n = int.tryParse(formulaTrayText) ?? 0;
     if (n > 0) {
-      final r = EggUnits.fromTrays(n);
-      formulaPattyText = r.patties != null ? '${r.patties}' : '';
-      formulaDozenText = '${r.dozens}';
-      formulaSingleText = '${r.eggs}';
+      final eggs = n * 30;
+      final dozens = eggs ~/ 12;
+      final patties = n ~/ 12;
+      formulaPattyText = patties > 0 ? '$patties' : '';
+      formulaDozenText = '$dozens';
+      formulaSingleText = '$eggs';
     } else {
       formulaPattyText = formulaDozenText = formulaSingleText = '';
     }
-    _applyFormulaToProducts();
     notifyListeners();
   }
 
@@ -106,14 +101,15 @@ class StockViewModel extends ChangeNotifier {
     formulaDozenText = _digits(raw);
     final n = int.tryParse(formulaDozenText) ?? 0;
     if (n > 0) {
-      final r = EggUnits.fromDozens(n);
-      formulaPattyText = r.patties != null ? '${r.patties}' : '';
-      formulaTrayText = r.trays != null ? '${r.trays}' : '';
-      formulaSingleText = '${r.eggs}';
+      final eggs = n * 12;
+      final trays = eggs ~/ 30;
+      final patties = trays ~/ 12;
+      formulaPattyText = patties > 0 ? '$patties' : '';
+      formulaTrayText = trays > 0 ? '$trays' : '';
+      formulaSingleText = '$eggs';
     } else {
       formulaPattyText = formulaTrayText = formulaSingleText = '';
     }
-    _applyFormulaToProducts();
     notifyListeners();
   }
 
@@ -121,39 +117,31 @@ class StockViewModel extends ChangeNotifier {
     formulaSingleText = _digits(raw);
     final n = int.tryParse(formulaSingleText) ?? 0;
     if (n > 0) {
-      final r = EggUnits.fromEggs(n);
-      formulaPattyText = r.patties != null ? '${r.patties}' : '';
-      formulaTrayText = r.trays != null ? '${r.trays}' : '';
-      formulaDozenText = r.dozens != null ? '${r.dozens}' : '';
+      final dozens = n ~/ 12;
+      final trays = n ~/ 30;
+      final patties = trays ~/ 12;
+      formulaPattyText = patties > 0 ? '$patties' : '';
+      formulaTrayText = trays > 0 ? '$trays' : '';
+      formulaDozenText = dozens > 0 ? '$dozens' : '';
     } else {
       formulaPattyText = formulaTrayText = formulaDozenText = '';
     }
-    _applyFormulaToProducts();
     notifyListeners();
   }
 
   // ── Submission ─────────────────────────────────────────────
   Future<bool> submitAddStock() async {
-    final toSubmit = <String, int>{};
-    for (final entry in _stockQtyMap.entries) {
-      final qty = int.tryParse(entry.value);
-      if (qty != null && qty > 0) toSubmit[entry.key] = qty;
-    }
-    if (toSubmit.isEmpty) return false;
-
-    bool anyOk = false;
-    for (final entry in toSubmit.entries) {
-      final ok =
-          await _inventory.addStockEntry(productId: entry.key, qty: entry.value);
-      if (ok) anyOk = true;
-    }
-    if (anyOk) showList();
-    return anyOk;
+    final totalEggs = int.tryParse(formulaSingleText) ?? 0;
+    if (totalEggs <= 0) return false;
+    final ok = await _inventory.addStockEntry(totalEggs: totalEggs);
+    if (ok) showList();
+    return ok;
   }
 
   Future<bool> submitProduct() async {
     final price = double.tryParse(priceText);
     final revenuePerUnit = double.tryParse(revenuePerUnitText) ?? 0;
+    final eggsPerUnit = int.tryParse(eggsPerUnitText) ?? 0;
     final editing = _editingProduct;
     if (editing == null || price == null) return false;
 
@@ -162,6 +150,7 @@ class StockViewModel extends ChangeNotifier {
       nameEn: nameEn.trim(),
       nameUr: nameUr.trim(),
       price: price,
+      eggsPerUnit: eggsPerUnit,
       revenuePerUnit: revenuePerUnit,
     );
     if (ok) showList();
@@ -169,24 +158,6 @@ class StockViewModel extends ChangeNotifier {
   }
 
   // ── Internals ──────────────────────────────────────────────
-  void _applyFormulaToProducts() {
-    final nameToQty = {
-      'Patty': formulaPattyText,
-      'Egg Tray': formulaTrayText,
-      'Egg Dozen': formulaDozenText,
-      'Single Egg': formulaSingleText,
-    };
-    for (final p in products) {
-      final qty = nameToQty[p.nameEn];
-      if (qty == null) continue;
-      if (qty.isNotEmpty) {
-        _stockQtyMap[p.id] = qty;
-      } else {
-        _stockQtyMap.remove(p.id);
-      }
-    }
-  }
-
   static String _digits(String s) => s.replaceAll(RegExp(r'[^0-9]'), '');
 
   void _resetForm() {
@@ -195,7 +166,7 @@ class StockViewModel extends ChangeNotifier {
     nameUr = '';
     priceText = '';
     revenuePerUnitText = '';
-    _stockQtyMap.clear();
+    eggsPerUnitText = '';
     formulaPattyText = '';
     formulaTrayText = '';
     formulaDozenText = '';

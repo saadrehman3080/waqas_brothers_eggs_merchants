@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/bill.dart';
 import '../models/bill_item.dart';
+import '../models/egg_pool.dart';
 import '../models/product.dart';
 
 /// Firestore-backed data service. Every read and write goes directly to
@@ -12,6 +13,9 @@ class DataService {
 
   CollectionReference<Map<String, dynamic>> get _products =>
       _db.collection('products');
+
+  DocumentReference<Map<String, dynamic>> get _poolRef =>
+      _db.collection('inventory').doc('egg_pool');
 
   // ── Products ───────────────────────────────────────────────
   Stream<List<Product>> watchProducts() {
@@ -25,14 +29,36 @@ class DataService {
     required String nameEn,
     required String nameUr,
     required double price,
+    required int eggsPerUnit,
     double revenuePerUnit = 0,
   }) async {
     await _products.doc(id).update({
       'nameEn': nameEn,
       'nameUr': nameUr,
       'price': price,
+      'eggsPerUnit': eggsPerUnit,
       'revenuePerUnit': revenuePerUnit,
     });
+  }
+
+  // ── Egg pool ───────────────────────────────────────────────
+  Stream<EggPool> watchEggPool() {
+    return _poolRef.snapshots().map((snap) {
+      if (!snap.exists || snap.data() == null) return EggPool.empty;
+      return _poolFromDoc(snap.data()!);
+    });
+  }
+
+  Future<void> addStockEntry({
+    required int totalEggs,
+    required String device,
+  }) async {
+    await _poolRef.set({
+      'stock': FieldValue.increment(totalEggs),
+      'stockAddedToday': FieldValue.increment(totalEggs),
+      'lastStockDevice': device,
+      'stockAddedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   // ── Bills ──────────────────────────────────────────────────
@@ -50,12 +76,20 @@ class DataService {
 
     final items = <BillItem>[];
     double subtotal = 0;
+    int totalEggs = 0;
+
     cart.forEach((pid, qty) {
       if (qty <= 0) return;
       final product = productMap[pid];
       if (product == null) throw StateError('Product $pid not found');
-      items.add(BillItem(productId: pid, qty: qty, price: product.price));
+      items.add(BillItem(
+        productId: pid,
+        qty: qty,
+        price: product.price,
+        eggsPerUnit: product.eggsPerUnit,
+      ));
       subtotal += product.price * qty;
+      totalEggs += qty * product.eggsPerUnit;
     });
     if (items.isEmpty) throw StateError('Cannot create an empty bill');
 
@@ -86,17 +120,15 @@ class DataService {
 
     final batch = _db.batch();
     batch.set(_db.doc(bill.firestorePath), bill.toJson());
-    for (final item in items) {
-      batch.update(_products.doc(item.productId), {
-        'sold': FieldValue.increment(item.qty),
-      });
+    if (totalEggs > 0) {
+      batch.update(_poolRef, {'sold': FieldValue.increment(totalEggs)});
     }
     await batch.commit();
     return bill;
   }
 
-  Future<List<({CashBill bill, DateTime deletedAt})>> fetchDeletedCashBillsForDate(
-      String date) async {
+  Future<List<({CashBill bill, DateTime deletedAt})>>
+      fetchDeletedCashBillsForDate(String date) async {
     final snap = await _db
         .collection('deleted_bills')
         .doc('cash_records')
@@ -106,8 +138,7 @@ class DataService {
       final data = d.data();
       final bill = CashBill.fromMap(data);
       final ts = data['deletedAt'];
-      final deletedAt =
-          ts is Timestamp ? ts.toDate() : DateTime.now();
+      final deletedAt = ts is Timestamp ? ts.toDate() : DateTime.now();
       return (bill: bill, deletedAt: deletedAt);
     }).toList();
   }
@@ -132,14 +163,13 @@ class DataService {
         );
   }
 
-  Stream<List<CreditBill>> watchCreditBillsForDate(String date) {
+  Stream<List<CreditBill>> watchCreditBills() {
     return _db
-        .collection('credit_sale')
-        .doc(date)
-        .collection('records')
+        .collection('credit_bills')
         .snapshots()
         .map(
-          (snap) => snap.docs.map((d) => CreditBill.fromMap(d.data())).toList(),
+          (snap) =>
+              snap.docs.map((d) => CreditBill.fromMap(d.data())).toList(),
         );
   }
 
@@ -155,16 +185,40 @@ class DataService {
       'deletedAt': FieldValue.serverTimestamp(),
     });
     batch.delete(_db.doc(bill.firestorePath));
-    for (final item in bill.items) {
-      batch.update(_products.doc(item.productId), {
-        'sold': FieldValue.increment(-item.qty),
-      });
+    if (bill.totalEggs > 0) {
+      batch.update(_poolRef, {'sold': FieldValue.increment(-bill.totalEggs)});
     }
     await batch.commit();
   }
 
-  Future<Bill> changeBillType(Bill bill, BillType newType) async {
+  Future<void> deleteCreditBill(
+    CreditBill bill, {
+    String? deletedByDevice,
+  }) async {
+    final archive = _db.collection('deleted_credit_bills').doc(bill.id);
+    final batch = _db.batch();
+    batch.set(archive, {
+      ...bill.toJson(),
+      'deletedAt': FieldValue.serverTimestamp(),
+      'deletedByDevice': deletedByDevice ?? '',
+    });
+    batch.delete(_db.doc(bill.firestorePath));
+    if (bill.totalEggs > 0) {
+      batch.update(_poolRef, {'sold': FieldValue.increment(-bill.totalEggs)});
+    }
+    await batch.commit();
+  }
+
+  Future<Bill> changeBillType(
+    Bill bill,
+    BillType newType, {
+    String? overrideCustomer,
+    String? movingDevice,
+  }) async {
     if (bill.type == newType) return bill;
+    final customer = (overrideCustomer?.trim().isNotEmpty == true)
+        ? overrideCustomer!
+        : bill.customer;
     final updated = switch (newType) {
       BillType.cash => CashBill(
         id: bill.id,
@@ -172,7 +226,7 @@ class DataService {
         subtotal: bill.subtotal,
         discount: bill.discount,
         total: bill.total,
-        customer: bill.customer,
+        customer: customer,
         device: bill.device,
         createdAt: bill.createdAt,
       ),
@@ -182,68 +236,74 @@ class DataService {
         subtotal: bill.subtotal,
         discount: bill.discount,
         total: bill.total,
-        customer: bill.customer,
+        customer: customer,
         device: bill.device,
         createdAt: bill.createdAt,
       ),
     };
+    final data = updated.toJson();
+    if (newType == BillType.credit) {
+      data['movedToCreditAt'] = FieldValue.serverTimestamp();
+      data['movedToCreditByDevice'] = movingDevice ?? '';
+    }
     final batch = _db.batch();
     batch.delete(_db.doc(bill.firestorePath));
-    batch.set(_db.doc(updated.firestorePath), updated.toJson());
+    batch.set(_db.doc(updated.firestorePath), data);
     await batch.commit();
     return updated;
   }
 
-  // ── Stock ──────────────────────────────────────────────────
-  Future<void> addStockEntry({
-    required String productId,
-    required int qty,
-    required String device,
-  }) async {
-    await _products.doc(productId).update({
-      'stock': FieldValue.increment(qty),
-      'stockAddedToday': FieldValue.increment(qty),
-      'lastStockDevice': device,
-      'stockAddedAt': FieldValue.serverTimestamp(),
-    });
+  Future<
+      List<(
+        {CreditBill bill, DateTime deletedAt, String deletedByDevice}
+      )>> fetchDeletedCreditBills() async {
+    final snap = await _db
+        .collection('deleted_credit_bills')
+        .orderBy('deletedAt', descending: true)
+        .limit(14)
+        .get();
+    return snap.docs.map((d) {
+      final data = d.data();
+      final bill = CreditBill.fromMap(data);
+      final ts = data['deletedAt'];
+      final deletedAt = ts is Timestamp ? ts.toDate() : DateTime.now();
+      final deletedByDevice = data['deletedByDevice'] as String? ?? '';
+      return (
+        bill: bill,
+        deletedAt: deletedAt,
+        deletedByDevice: deletedByDevice
+      );
+    }).toList();
   }
 
   // ── Helpers ────────────────────────────────────────────────
   Product _productFromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = Map<String, dynamic>.from(doc.data()!);
     data['id'] = doc.id;
-
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    final ts = data['stockAddedAt'];
-    if (ts is Timestamp) {
-      final dt = ts.toDate().toLocal();
-      final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
-      final mn = dt.minute.toString().padLeft(2, '0');
-      final ampm = dt.hour < 12 ? 'AM' : 'PM';
-      data['stockAddedAt'] = '${dt.day} ${months[dt.month - 1]}  $h:$mn $ampm';
-      data['stockAddedAtMs'] = dt.millisecondsSinceEpoch;
-    } else {
-      data['stockAddedAt'] = '';
-      data['stockAddedAtMs'] = 0;
-    }
     try {
       return Product.fromJson(data);
     } catch (e) {
       debugPrint('_productFromDoc error on ${doc.id}: $e');
       rethrow;
     }
+  }
+
+  EggPool _poolFromDoc(Map<String, dynamic> data) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    final ts = data['stockAddedAt'];
+    String formattedAt = '';
+    int atMs = 0;
+    if (ts is Timestamp) {
+      final dt = ts.toDate().toLocal();
+      final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+      final mn = dt.minute.toString().padLeft(2, '0');
+      final ampm = dt.hour < 12 ? 'AM' : 'PM';
+      formattedAt = '${dt.day} ${months[dt.month - 1]}  $h:$mn $ampm';
+      atMs = dt.millisecondsSinceEpoch;
+    }
+    return EggPool.fromMap(data, formattedAt: formattedAt, atMs: atMs);
   }
 }

@@ -11,6 +11,7 @@ class CreditBillDetail extends StatelessWidget {
   final Product? Function(String) productLookup;
   final VoidCallback onMarkPaid;
   final VoidCallback onReprint;
+  final VoidCallback onDelete;
 
   const CreditBillDetail({
     super.key,
@@ -18,6 +19,7 @@ class CreditBillDetail extends StatelessWidget {
     required this.productLookup,
     required this.onMarkPaid,
     required this.onReprint,
+    required this.onDelete,
   });
 
   @override
@@ -63,6 +65,54 @@ class CreditBillDetail extends StatelessWidget {
                             color: AppColors.ink400,
                           ),
                         ),
+                        if (bill case final CreditBill cb
+                            when cb.movedToCreditByDevice != null) ...[
+                          const SizedBox(height: 5),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: AppColors.primarySoft,
+                              borderRadius: BorderRadius.circular(7),
+                              border:
+                                  Border.all(color: AppColors.primarySoftBorder),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                RichText(
+                                  text: TextSpan(
+                                    children: [
+                                      const TextSpan(
+                                        text: 'Moved by: ',
+                                        style: TextStyle(
+                                          fontSize: 9,
+                                          color: AppColors.ink600,
+                                        ),
+                                      ),
+                                      TextSpan(
+                                        text: cb.movedToCreditByDevice,
+                                        style: const TextStyle(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppColors.primary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (cb.movedToCreditAt != null)
+                                  Text(
+                                    'At: ${FormatHelpers.formatDateTime(cb.movedToCreditAt!)}',
+                                    style: const TextStyle(
+                                      fontSize: 9,
+                                      color: AppColors.ink400,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -123,6 +173,43 @@ class CreditBillDetail extends StatelessWidget {
                   }),
                 ),
               ),
+              if (bill.discount > 0) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 11, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(9),
+                    border: Border.all(color: AppColors.borderDark),
+                  ),
+                  child: Column(
+                    children: [
+                      _SummaryRow(
+                        label: 'Subtotal',
+                        value: FormatHelpers.currency(bill.subtotal),
+                        color: AppColors.ink600,
+                      ),
+                      const SizedBox(height: 4),
+                      _SummaryRow(
+                        label: 'Discount',
+                        value: '− ${FormatHelpers.currency(bill.discount)}',
+                        color: AppColors.danger,
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 6),
+                        child: Divider(height: 1, color: AppColors.border),
+                      ),
+                      _SummaryRow(
+                        label: 'Total',
+                        value: FormatHelpers.currency(bill.total),
+                        color: AppColors.ink900,
+                        bold: true,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -141,9 +228,56 @@ class CreditBillDetail extends StatelessWidget {
                     icon: Icons.print_outlined,
                     onPressed: onReprint,
                   ),
+                  const SizedBox(width: 7),
+                  AppButton(
+                    label: 'Delete',
+                    small: true,
+                    variant: AppButtonVariant.danger,
+                    icon: Icons.delete_outline_rounded,
+                    onPressed: onDelete,
+                  ),
                 ],
               ),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SummaryRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  final bool bold;
+
+  const _SummaryRow({
+    required this.label,
+    required this.value,
+    required this.color,
+    this.bold = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: bold ? AppColors.ink900 : AppColors.ink600,
+            fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 11,
+            color: color,
+            fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
           ),
         ),
       ],

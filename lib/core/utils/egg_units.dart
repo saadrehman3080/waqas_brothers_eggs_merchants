@@ -1,25 +1,23 @@
 /// Egg unit conversion constants.
 ///
-/// 1 patty = 24 trays
-/// 1 tray  = 24 eggs
+/// 1 patty = 12 trays
+/// 1 tray  = 30 eggs
 /// 1 dozen = 12 eggs
 ///
 /// Derived:
-///   1 patty = 576 eggs = 48 dozen = 24 trays
-///   1 tray  = 24 eggs  = 2 dozen
+///   1 patty = 360 eggs = 30 dozens = 12 trays
 class EggUnits {
   EggUnits._();
 
-  static const int traysPerPatty = 24;
-  static const int eggsPerTray = 24;
+  static const int traysPerPatty = 12;
+  static const int eggsPerTray = 30;
   static const int eggsPerDozen = 12;
 
   // Derived
-  static const int eggsPerPatty = traysPerPatty * eggsPerTray; // 576
-  static const int dozensPerPatty = eggsPerPatty ~/ eggsPerDozen; // 48
-  static const int dozensPerTray = eggsPerTray ~/ eggsPerDozen; // 2
+  static const int eggsPerPatty = traysPerPatty * eggsPerTray; // 360
+  static const int dozensPerPatty = eggsPerPatty ~/ eggsPerDozen; // 30
 
-  /// Convert [patties] to all units. Returns null fields when result < 1.
+  /// Convert [patties] to all units.
   static ({int trays, int dozens, int eggs}) fromPatties(int patties) {
     final trays = patties * traysPerPatty;
     final eggs = trays * eggsPerTray;

@@ -66,12 +66,19 @@ class _OrderView extends StatelessWidget {
                       return ProductOrderCard(
                         product: p,
                         qty: q,
+                        poolStock: inventory.eggPool.stock,
+                        effectivePoolRemaining: order.effectivePoolRemaining,
                         onIncrement: () => order.increment(p.id),
                         onDecrement: () => order.decrement(p.id),
                         onTapPriceOrName: () async {
+                          final epu = p.eggsPerUnit;
+                          final effRemaining = epu > 0
+                              ? order.effectivePoolRemaining ~/ epu + q
+                              : 0;
                           final result = await QuantityDialog.show(
                             context,
                             product: p,
+                            effectiveRemaining: effRemaining,
                             currentQty: q,
                           );
                           if (result != null) order.setQty(p.id, result);

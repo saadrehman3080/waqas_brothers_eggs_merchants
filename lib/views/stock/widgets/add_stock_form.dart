@@ -9,7 +9,6 @@ import '../../../models/product.dart';
 import '../../../viewmodels/stock_viewmodel.dart';
 import '../../widgets/app_button.dart';
 
-const _kFormulaNames = {'Patty', 'Egg Tray', 'Egg Dozen', 'Single Egg'};
 
 class AddStockForm extends StatefulWidget {
   final VoidCallback onCancel;
@@ -26,8 +25,6 @@ class AddStockForm extends StatefulWidget {
 }
 
 class _AddStockFormState extends State<AddStockForm> {
-  final Map<String, TextEditingController> _controllers = {};
-
   final TextEditingController _pattyCtrl = TextEditingController();
   final TextEditingController _trayCtrl = TextEditingController();
   final TextEditingController _dozenCtrl = TextEditingController();
@@ -45,9 +42,6 @@ class _AddStockFormState extends State<AddStockForm> {
       if (mounted) setState(() => _submitting = false);
     }
   }
-
-  TextEditingController _controllerFor(String productId) =>
-      _controllers.putIfAbsent(productId, () => TextEditingController());
 
   TextEditingController _formulaCtrlFor(String nameEn) {
     switch (nameEn) {
@@ -98,12 +92,6 @@ class _AddStockFormState extends State<AddStockForm> {
     _syncCtrl(_trayCtrl, s.formulaTrayText);
     _syncCtrl(_dozenCtrl, s.formulaDozenText);
     _syncCtrl(_singleCtrl, s.formulaSingleText);
-    for (final p in s.products) {
-      final ctrl = _controllers[p.id];
-      if (ctrl != null) {
-        _syncCtrl(ctrl, s.stockQtyTextFor(p.id));
-      }
-    }
   }
 
   void _syncCtrl(TextEditingController ctrl, String value) {
@@ -122,9 +110,6 @@ class _AddStockFormState extends State<AddStockForm> {
     _trayCtrl.dispose();
     _dozenCtrl.dispose();
     _singleCtrl.dispose();
-    for (final c in _controllers.values) {
-      c.dispose();
-    }
     super.dispose();
   }
 
@@ -166,40 +151,39 @@ class _AddStockFormState extends State<AddStockForm> {
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
-                  vertical: 10,
+                  vertical: 11,
                 ),
-                color: AppColors.primarySoft,
+                decoration: const BoxDecoration(
+                  color: AppColors.primarySoft,
+                ),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: const [
-                    _FormulaUnit(value: '1', label: 'PATTY'),
-                    _FormulaEq(),
-                    _FormulaUnit(value: '24', label: 'TRAYS'),
-                    _FormulaEq(),
-                    _FormulaUnit(value: '48', label: 'DOZENS'),
-                    _FormulaEq(),
-                    _FormulaUnit(value: '576', label: 'SINGLES'),
+                  children: [
+                    const Expanded(
+                      child: _FormulaUnit(value: '1', label: 'PATTY'),
+                    ),
+                    const _FormulaDivider(),
+                    const Expanded(
+                      child: _FormulaUnit(value: '12', label: 'TRAYS'),
+                    ),
+                    const _FormulaDivider(),
+                    const Expanded(
+                      child: _FormulaUnit(value: '30', label: 'EGGS / TRAY'),
+                    ),
+                    const _FormulaDivider(),
+                    const Expanded(
+                      child: _FormulaUnit(value: '360', label: 'TOTAL EGGS'),
+                    ),
                   ],
                 ),
               ),
               const Divider(height: 1, thickness: 1, color: AppColors.border),
-              for (int i = 0; i < products.length; i++) ...[
-                () {
-                  final p = products[i];
-                  final isFormula = _kFormulaNames.contains(p.nameEn);
-                  return _ProductRow(
-                    product: p,
-                    controller: isFormula
-                        ? _formulaCtrlFor(p.nameEn)
-                        : _controllerFor(p.id),
-                    onChanged: isFormula
-                        ? _formulaOnChangedFor(stock, p.nameEn)
-                        : (text) => stock.setStockQtyText(p.id, text),
-                    isLast: i == products.length - 1,
-                  );
-                }(),
-              ],
+              for (int i = 0; i < products.length; i++)
+                _ProductRow(
+                  product: products[i],
+                  controller: _formulaCtrlFor(products[i].nameEn),
+                  onChanged: _formulaOnChangedFor(stock, products[i].nameEn),
+                  isLast: i == products.length - 1,
+                ),
             ],
           ),
         ),
@@ -374,19 +358,19 @@ class _FormulaUnit extends StatelessWidget {
   }
 }
 
-class _FormulaEq extends StatelessWidget {
-  const _FormulaEq();
+class _FormulaDivider extends StatelessWidget {
+  const _FormulaDivider();
 
   @override
   Widget build(BuildContext context) {
     return const Padding(
-      padding: EdgeInsets.only(bottom: 12),
+      padding: EdgeInsets.symmetric(horizontal: 4),
       child: Text(
         '=',
         style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: AppColors.ink400,
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          color: AppColors.primarySoftBorder,
         ),
       ),
     );

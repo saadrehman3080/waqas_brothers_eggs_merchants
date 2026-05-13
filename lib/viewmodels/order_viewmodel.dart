@@ -7,13 +7,13 @@ import 'inventory_viewmodel.dart';
 enum OrderSubmissionState { idle, submitting, success, error }
 
 /// Drives the Order screen: cart contents, checkout configuration,
-/// submission flow.
+/// and submission flow against the unified egg pool.
 class OrderViewModel extends ChangeNotifier {
   OrderViewModel(this._inventory);
 
   final InventoryViewModel _inventory;
 
-  // Cart — keyed by Firestore product ID (String)
+  // Cart — keyed by Firestore product ID
   final Map<String, int> _cart = {};
   Map<String, int> get cart => Map.unmodifiable(_cart);
 
@@ -27,7 +27,6 @@ class OrderViewModel extends ChangeNotifier {
   String get customer => _customer;
   String get discountText => _discountText;
 
-  // Submission
   OrderSubmissionState _submission = OrderSubmissionState.idle;
   OrderSubmissionState get submission => _submission;
   bool get isSubmitting => _submission == OrderSubmissionState.submitting;
@@ -36,22 +35,40 @@ class OrderViewModel extends ChangeNotifier {
   int qtyOf(String productId) => _cart[productId] ?? 0;
   bool get hasItems => _cart.values.any((q) => q > 0);
 
-  double get subtotal => _inventory.products.fold(0.0, (sum, p) {
-        return sum + qtyOf(p.id) * p.price;
+  double get subtotal => _inventory.products.fold(0.0, (acc, p) {
+        return acc + qtyOf(p.id) * p.price;
       });
 
   double get total =>
       (subtotal - _discount).clamp(0, double.infinity).toDouble();
 
+  /// Total eggs currently committed to the cart across all products.
+  int get cartEggs {
+    int total = 0;
+    for (final entry in _cart.entries) {
+      final product = _inventory.productById(entry.key);
+      if (product != null && product.eggsPerUnit > 0) {
+        total += entry.value * product.eggsPerUnit;
+      }
+    }
+    return total;
+  }
+
+  /// Pool eggs still available after subtracting what's already in the cart.
+  int get effectivePoolRemaining => _inventory.poolRemaining - cartEggs;
+
   void increment(String productId) {
     final product = _inventory.productById(productId);
-    if (product != null && qtyOf(productId) >= product.remaining) return;
+    if (product == null) return;
+    if (product.eggsPerUnit > 0) {
+      if (effectivePoolRemaining < product.eggsPerUnit) return;
+    }
     _cart.update(productId, (q) => q + 1, ifAbsent: () => 1);
     notifyListeners();
   }
 
   void decrement(String productId) {
-    final next = (qtyOf(productId)) - 1;
+    final next = qtyOf(productId) - 1;
     if (next <= 0) {
       _cart.remove(productId);
     } else {
@@ -62,7 +79,15 @@ class OrderViewModel extends ChangeNotifier {
 
   void setQty(String productId, int qty) {
     final product = _inventory.productById(productId);
-    final max = product != null ? product.remaining : qty;
+    int max;
+    if (product != null && product.eggsPerUnit > 0) {
+      // Pool available before this product's current cart contribution
+      final poolBeforeThis =
+          _inventory.poolRemaining - (cartEggs - qtyOf(productId) * product.eggsPerUnit);
+      max = poolBeforeThis ~/ product.eggsPerUnit;
+    } else {
+      max = qty;
+    }
     final clamped = qty.clamp(0, max < 0 ? 0 : max);
     if (clamped <= 0) {
       _cart.remove(productId);

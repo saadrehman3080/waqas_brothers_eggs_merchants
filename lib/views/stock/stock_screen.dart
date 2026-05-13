@@ -83,38 +83,36 @@ class _StockView extends StatelessWidget {
                     icon: Icons.inventory_2_outlined,
                   );
                 }
-                final ref = products.reduce(
-                  (a, b) => b.stockAddedAtMs > a.stockAddedAtMs ? b : a,
-                );
+                final pool = inventory.eggPool;
                 final showBanner =
-                    ref.stockAddedAt.isNotEmpty || ref.lastStockDevice.isNotEmpty;
+                    pool.stockAddedAt.isNotEmpty ||
+                    pool.lastStockDevice.isNotEmpty;
                 final now = DateTime.now();
-                final lastUpdate = ref.stockAddedAtMs > 0
-                    ? DateTime.fromMillisecondsSinceEpoch(ref.stockAddedAtMs)
+                final lastUpdate = pool.stockAddedAtMs > 0
+                    ? DateTime.fromMillisecondsSinceEpoch(pool.stockAddedAtMs)
                     : null;
                 final isToday = lastUpdate != null &&
                     lastUpdate.year == now.year &&
                     lastUpdate.month == now.month &&
                     lastUpdate.day == now.day;
-                final pattiesAddedToday = isToday
-                    ? products
-                        .where((p) => p.nameEn == 'Patty')
-                        .fold<int>(0, (sum, p) => sum + p.stockAddedToday)
-                    : 0;
+                // 360 eggs per patty
+                final pattiesAddedToday =
+                    isToday ? pool.stockAddedToday ~/ 360 : 0;
                 return ListView.builder(
                   padding: const EdgeInsets.fromLTRB(13, 11, 13, 16),
                   itemCount: products.length + (showBanner ? 1 : 0),
                   itemBuilder: (_, i) {
                     if (showBanner && i == 0) {
                       return _LastUpdatedBanner(
-                        updatedAt: ref.stockAddedAt,
-                        device: ref.lastStockDevice,
+                        updatedAt: pool.stockAddedAt,
+                        device: pool.lastStockDevice,
                         pattiesAddedToday: pattiesAddedToday,
                       );
                     }
                     final p = products[showBanner ? i - 1 : i];
                     return ProductStockCard(
                       product: p,
+                      eggPool: pool,
                       onEdit: () => stock.showEditProduct(p),
                     );
                   },

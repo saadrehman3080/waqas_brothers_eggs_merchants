@@ -2,36 +2,46 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/color_schemes.dart';
 import '../../../core/theme/text_styles.dart';
+import '../../../models/egg_pool.dart';
 import '../../../models/product.dart';
 
 class ProductStockCard extends StatelessWidget {
   final Product product;
+  final EggPool eggPool;
   final VoidCallback onEdit;
 
   const ProductStockCard({
     super.key,
     required this.product,
+    required this.eggPool,
     required this.onEdit,
   });
 
   @override
   Widget build(BuildContext context) {
+    final epu = product.eggsPerUnit;
+    final totalUnits = eggPool.totalAs(epu);
+    final remainingUnits = eggPool.remainingAs(epu);
+    final soldUnits = eggPool.soldAs(epu);
+    final addedTodayUnits =
+        epu > 0 ? eggPool.stockAddedToday ~/ epu : 0;
+
     final topTiles = <_StatTileData>[
       _StatTileData(
         label: 'Total',
-        value: '${product.stock}',
+        value: '$totalUnits',
         suffix: 'in stock',
         color: AppColors.ink900,
       ),
       _StatTileData(
         label: 'Available',
-        value: '${product.remaining}',
+        value: '$remainingUnits',
         suffix: 'remaining',
         color: AppColors.success,
       ),
       _StatTileData(
         label: 'Sold',
-        value: '${product.sold}',
+        value: '$soldUnits',
         suffix: 'units',
         color: AppColors.primary,
       ),
@@ -50,6 +60,12 @@ class ProductStockCard extends StatelessWidget {
         suffix: 'margin',
         color: const Color(0xFF059669),
       ),
+      _StatTileData(
+        label: 'Eggs / Unit',
+        value: epu > 0 ? '$epu' : '—',
+        suffix: 'eggs',
+        color: AppColors.ink600,
+      ),
     ];
 
     return Container(
@@ -62,14 +78,11 @@ class ProductStockCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ── Header ──
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
             child: _Header(product: product, onEdit: onEdit),
           ),
           const SizedBox(height: 8),
-
-          // ── Top row: Total · Available · Sold ──
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
@@ -85,8 +98,6 @@ class ProductStockCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 5),
-
-          // ── Bottom row: Price · Revenue/Unit ──
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
@@ -101,16 +112,13 @@ class ProductStockCard extends StatelessWidget {
               }),
             ),
           ),
-
-          // ── Today's stock badge — only when update date is today ──
-          if (product.stockAddedToday > 0 && _isToday(product.stockAddedAtMs)) ...[
+          if (addedTodayUnits > 0 && _isToday(eggPool.stockAddedAtMs)) ...[
             const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: _TodayStockBadge(product: product),
+              child: _TodayStockBadge(units: addedTodayUnits),
             ),
           ],
-
           const SizedBox(height: 10),
         ],
       ),
@@ -220,8 +228,8 @@ class _StatTile extends StatelessWidget {
 }
 
 class _TodayStockBadge extends StatelessWidget {
-  final Product product;
-  const _TodayStockBadge({required this.product});
+  final int units;
+  const _TodayStockBadge({required this.units});
 
   @override
   Widget build(BuildContext context) {
@@ -268,7 +276,7 @@ class _TodayStockBadge extends StatelessWidget {
                 ),
                 const SizedBox(height: 1),
                 Text(
-                  '${product.stockAddedToday} units',
+                  '+$units units',
                   style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w800,

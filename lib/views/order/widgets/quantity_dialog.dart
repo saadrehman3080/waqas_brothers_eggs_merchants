@@ -7,22 +7,35 @@ import '../../../models/product.dart';
 import '../../widgets/app_button.dart';
 
 /// Modal that lets the user pick a preset quantity or type a custom value.
+/// [effectiveRemaining] is the pool-derived units still available for this
+/// product after accounting for what's already in the cart.
 /// Returns the chosen quantity, or null if cancelled.
 class QuantityDialog extends StatefulWidget {
   final Product product;
   final int currentQty;
+  final int effectiveRemaining;
 
-  const QuantityDialog({super.key, required this.product, this.currentQty = 0});
+  const QuantityDialog({
+    super.key,
+    required this.product,
+    required this.effectiveRemaining,
+    this.currentQty = 0,
+  });
 
   static Future<int?> show(
     BuildContext context, {
     required Product product,
+    required int effectiveRemaining,
     int currentQty = 0,
   }) {
     return showDialog<int>(
       context: context,
       barrierColor: AppColors.overlay,
-      builder: (_) => QuantityDialog(product: product, currentQty: currentQty),
+      builder: (_) => QuantityDialog(
+        product: product,
+        effectiveRemaining: effectiveRemaining,
+        currentQty: currentQty,
+      ),
     );
   }
 
@@ -36,6 +49,8 @@ class _QuantityDialogState extends State<QuantityDialog> {
 
   static const List<int> _presets = [5, 10, 15, 25];
 
+  int get _max => widget.effectiveRemaining;
+
   @override
   void dispose() {
     _customController.dispose();
@@ -46,6 +61,8 @@ class _QuantityDialogState extends State<QuantityDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isLow = _max > 0 && _max <= 10;
+
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 24),
@@ -74,15 +91,15 @@ class _QuantityDialogState extends State<QuantityDialog> {
             ),
             const SizedBox(height: 6),
             Text(
-              '${widget.product.remaining} in stock',
+              '$_max in stock',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: widget.product.remaining <= 0
+                color: _max <= 0
                     ? AppColors.danger
-                    : widget.product.isLowStock
-                    ? AppColors.warning
-                    : AppColors.success,
+                    : isLow
+                        ? AppColors.warning
+                        : AppColors.success,
               ),
             ),
             const SizedBox(height: 14),
@@ -94,7 +111,7 @@ class _QuantityDialogState extends State<QuantityDialog> {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               children: _presets.map((q) {
-                final enabled = q <= widget.product.remaining;
+                final enabled = q <= _max;
                 return _PresetTile(
                   qty: q,
                   selected: _selected == q,
@@ -107,11 +124,9 @@ class _QuantityDialogState extends State<QuantityDialog> {
             _PresetTile(
               qty: 100,
               selected: _selected == 100,
-              enabled: 100 <= widget.product.remaining,
+              enabled: 100 <= _max,
               fullWidth: true,
-              onTap: 100 <= widget.product.remaining
-                  ? () => _commit(100)
-                  : () {},
+              onTap: 100 <= _max ? () => _commit(100) : () {},
             ),
             const SizedBox(height: 12),
             Row(
@@ -130,16 +145,14 @@ class _QuantityDialogState extends State<QuantityDialog> {
                   onPressed: () {
                     final q = int.tryParse(_customController.text);
                     if (q != null && q > 0) {
-                      if (q > widget.product.remaining) {
+                      if (q > _max) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text(
-                              'Maximum available: ${widget.product.remaining}',
-                            ),
-                            duration: Duration(seconds: 2),
+                            content: Text('Maximum available: $_max'),
+                            duration: const Duration(seconds: 2),
                           ),
                         );
-                        _commit(widget.product.remaining);
+                        _commit(_max);
                       } else {
                         _commit(q);
                       }
@@ -189,15 +202,15 @@ class _PresetTile extends StatelessWidget {
           color: !enabled
               ? AppColors.background
               : selected
-              ? AppColors.primarySoft
-              : AppColors.background,
+                  ? AppColors.primarySoft
+                  : AppColors.background,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: !enabled
                 ? AppColors.border
                 : selected
-                ? AppColors.primary
-                : AppColors.border,
+                    ? AppColors.primary
+                    : AppColors.border,
             width: 1.5,
           ),
         ),
@@ -209,8 +222,8 @@ class _PresetTile extends StatelessWidget {
             color: !enabled
                 ? AppColors.ink400
                 : selected
-                ? AppColors.primary
-                : AppColors.ink900,
+                    ? AppColors.primary
+                    : AppColors.ink900,
           ),
         ),
       ),

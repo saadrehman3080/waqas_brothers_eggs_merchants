@@ -1,9 +1,7 @@
 import 'package:animations/animations.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 import '../core/constants/app_strings.dart';
-import '../viewmodels/inventory_viewmodel.dart';
 import 'credit/credit_screen.dart';
 import 'dashboard/dashboard_screen.dart';
 import 'history/history_screen.dart';
@@ -21,7 +19,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _selectedIndex = 1;
+  int _selectedIndex = 3;
 
   static const List<BottomNavItem> _navItems = [
     BottomNavItem(
@@ -61,9 +59,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final creditCount = context.select<InventoryViewModel, int>(
-      (s) => s.creditCount,
-    );
     return Scaffold(
       body: NoInternetBanner(
         child: SafeArea(
@@ -88,8 +83,6 @@ class _HomeScreenState extends State<HomeScreen> {
         items: _navItems,
         currentIndex: _selectedIndex,
         onChanged: (i) => setState(() => _selectedIndex = i),
-        badgeIndex: 3,
-        badgeCount: creditCount,
       ),
     );
   }

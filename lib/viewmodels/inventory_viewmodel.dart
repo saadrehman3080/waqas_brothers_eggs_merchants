@@ -6,15 +6,14 @@ import '../core/constants/app_strings.dart';
 import '../core/utils/device_name.dart';
 import '../core/utils/format_helpers.dart';
 import '../models/bill.dart';
+import '../models/egg_pool.dart';
 import '../models/product.dart';
 import '../services/data_service.dart';
 
 enum InventoryState { initial, loading, loaded, error }
 
-/// Shared inventory state. All product and bill data flows in through live
-/// Firestore snapshot streams — subscribed once on startup and kept open
-/// for the lifetime of the viewmodel. Screens read reactive getters; they
-/// never trigger their own loads.
+/// Shared inventory state. All product, bill, and egg-pool data flows in
+/// through live Firestore snapshot streams — subscribed once on startup.
 class InventoryViewModel extends ChangeNotifier {
   InventoryViewModel(this._dataService);
 
@@ -23,6 +22,7 @@ class InventoryViewModel extends ChangeNotifier {
   StreamSubscription<List<Product>>? _productsSub;
   StreamSubscription<List<CashBill>>? _cashBillsSub;
   StreamSubscription<List<CreditBill>>? _creditBillsSub;
+  StreamSubscription<EggPool>? _eggPoolSub;
 
   String? _cachedDeviceName;
   Future<String> _deviceName() async =>
@@ -34,6 +34,7 @@ class InventoryViewModel extends ChangeNotifier {
   List<Product> _products = const [];
   List<CashBill> _cashBills = const [];
   List<CreditBill> _creditBills = const [];
+  EggPool _eggPool = EggPool.empty;
 
   bool _cashBillsLoaded = false;
   bool _creditBillsLoaded = false;
@@ -46,10 +47,10 @@ class InventoryViewModel extends ChangeNotifier {
   List<Product> get products => List.unmodifiable(_products);
   List<Bill> get bills => [..._cashBills, ..._creditBills];
 
-  /// True until the cash-bills stream emits its first snapshot.
-  bool get cashBillsLoading => !_cashBillsLoaded;
+  EggPool get eggPool => _eggPool;
+  int get poolRemaining => _eggPool.remaining;
 
-  /// True until the credit-bills stream emits its first snapshot.
+  bool get cashBillsLoading => !_cashBillsLoaded;
   bool get creditBillsLoading => !_creditBillsLoaded;
 
   int get creditCount => _creditBills.length;
@@ -64,9 +65,7 @@ class InventoryViewModel extends ChangeNotifier {
     _productsSub = _dataService.watchProducts().listen(
       (products) {
         _products = products;
-        if (_state != InventoryState.loaded) {
-          _state = InventoryState.loaded;
-        }
+        if (_state != InventoryState.loaded) _state = InventoryState.loaded;
         notifyListeners();
       },
       onError: (e) {
@@ -75,6 +74,15 @@ class InventoryViewModel extends ChangeNotifier {
         debugPrint('watchProducts error: $e');
         notifyListeners();
       },
+    );
+
+    await _eggPoolSub?.cancel();
+    _eggPoolSub = _dataService.watchEggPool().listen(
+      (pool) {
+        _eggPool = pool;
+        notifyListeners();
+      },
+      onError: (e) => debugPrint('watchEggPool error: $e'),
     );
 
     _subscribeTodayBills();
@@ -94,7 +102,7 @@ class InventoryViewModel extends ChangeNotifier {
     );
 
     _creditBillsSub?.cancel();
-    _creditBillsSub = _dataService.watchCreditBillsForDate(today).listen(
+    _creditBillsSub = _dataService.watchCreditBills().listen(
       (bills) {
         _creditBills = bills;
         _creditBillsLoaded = true;
@@ -109,6 +117,7 @@ class InventoryViewModel extends ChangeNotifier {
     _productsSub?.cancel();
     _cashBillsSub?.cancel();
     _creditBillsSub?.cancel();
+    _eggPoolSub?.cancel();
     super.dispose();
   }
 
@@ -144,10 +153,18 @@ class InventoryViewModel extends ChangeNotifier {
     }
   }
 
-  Future<bool> changeBillType(String id, BillType type) async {
+  Future<bool> changeBillType(
+    Bill bill,
+    BillType type, {
+    String? customer,
+  }) async {
     try {
-      final bill = bills.firstWhere((b) => b.id == id);
-      await _dataService.changeBillType(bill, type);
+      await _dataService.changeBillType(
+        bill,
+        type,
+        overrideCustomer: customer,
+        movingDevice: await _deviceName(),
+      );
       return true;
     } catch (e) {
       _errorMessage = e.toString();
@@ -159,9 +176,9 @@ class InventoryViewModel extends ChangeNotifier {
   Future<List<CashBill>> fetchCashBillsForDate(String date) =>
       _dataService.fetchCashBillsForDate(date);
 
-  Future<List<({CashBill bill, DateTime deletedAt})>> fetchDeletedCashBillsForDate(
-          String date) =>
-      _dataService.fetchDeletedCashBillsForDate(date);
+  Future<List<({CashBill bill, DateTime deletedAt})>>
+      fetchDeletedCashBillsForDate(String date) =>
+          _dataService.fetchDeletedCashBillsForDate(date);
 
   Future<bool> deleteCashBill(String id) async {
     try {
@@ -175,14 +192,27 @@ class InventoryViewModel extends ChangeNotifier {
     }
   }
 
-  Future<bool> addStockEntry({
-    required String productId,
-    required int qty,
-  }) async {
+  Future<List<({CreditBill bill, DateTime deletedAt, String deletedByDevice})>>
+      fetchDeletedCreditBills() => _dataService.fetchDeletedCreditBills();
+
+  Future<bool> deleteCreditBill(CreditBill bill) async {
+    try {
+      await _dataService.deleteCreditBill(
+        bill,
+        deletedByDevice: await _deviceName(),
+      );
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> addStockEntry({required int totalEggs}) async {
     try {
       await _dataService.addStockEntry(
-        productId: productId,
-        qty: qty,
+        totalEggs: totalEggs,
         device: await _deviceName(),
       );
       return true;
@@ -198,6 +228,7 @@ class InventoryViewModel extends ChangeNotifier {
     required String nameEn,
     required String nameUr,
     required double price,
+    required int eggsPerUnit,
     double revenuePerUnit = 0,
   }) async {
     try {
@@ -206,6 +237,7 @@ class InventoryViewModel extends ChangeNotifier {
         nameEn: nameEn,
         nameUr: nameUr,
         price: price,
+        eggsPerUnit: eggsPerUnit,
         revenuePerUnit: revenuePerUnit,
       );
       return true;
@@ -240,11 +272,11 @@ class InventoryViewModel extends ChangeNotifier {
   int get todayCustomerCount => _todayBills().length;
 
   int productQtyToday(String productId) {
-    return _todayBills().fold<int>(0, (sum, b) {
+    return _todayBills().fold<int>(0, (acc, b) {
       for (final item in b.items) {
-        if (item.productId == productId) return sum + item.qty;
+        if (item.productId == productId) return acc + item.qty;
       }
-      return sum;
+      return acc;
     });
   }
 
@@ -252,7 +284,7 @@ class InventoryViewModel extends ChangeNotifier {
     final product = _products.firstWhere(
       (p) => p.nameEn == nameEn,
       orElse: () => const Product(
-        id: '', nameEn: '', nameUr: '', price: 0, stock: 0, sold: 0,
+        id: '', nameEn: '', nameUr: '', price: 0, eggsPerUnit: 0,
       ),
     );
     if (product.id.isEmpty) return 0;

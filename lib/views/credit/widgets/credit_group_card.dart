@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/color_schemes.dart';
 import '../../../core/utils/format_helpers.dart';
-import '../../../core/utils/string_helpers.dart';
 import '../../../models/bill.dart';
 import '../../../models/product.dart';
 import 'credit_bill_detail.dart';
@@ -27,6 +26,7 @@ class CreditGroupCard extends StatelessWidget {
   final Product? Function(String) productLookup;
   final void Function(Bill) onMarkPaid;
   final void Function(Bill) onReprint;
+  final void Function(Bill) onDelete;
 
   const CreditGroupCard({
     super.key,
@@ -36,6 +36,7 @@ class CreditGroupCard extends StatelessWidget {
     required this.productLookup,
     required this.onMarkPaid,
     required this.onReprint,
+    required this.onDelete,
   });
 
   @override
@@ -53,29 +54,9 @@ class CreditGroupCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(13),
             onTap: onToggle,
             child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
               child: Row(
                 children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: AppColors.primarySoft,
-                      border: Border.all(color: AppColors.primarySoftBorder),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      StringHelpers.initial(group.name),
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -109,9 +90,22 @@ class CreditGroupCard extends StatelessWidget {
                           color: AppColors.danger,
                         ),
                       ),
-                      const Text(
-                        'outstanding',
-                        style: TextStyle(
+                      Text(
+                        group.bills.length == 1
+                            ? FormatHelpers.headerDate(
+                                group.bills.first.createdAt,
+                              )
+                            : FormatHelpers.headerDate(
+                                group.bills
+                                    .reduce(
+                                      (a, b) =>
+                                          a.createdAt.isBefore(b.createdAt)
+                                          ? a
+                                          : b,
+                                    )
+                                    .createdAt,
+                              ),
+                        style: const TextStyle(
                           fontSize: 9,
                           color: AppColors.ink400,
                         ),
@@ -129,6 +123,7 @@ class CreditGroupCard extends StatelessWidget {
                 productLookup: productLookup,
                 onMarkPaid: () => onMarkPaid(bill),
                 onReprint: () => onReprint(bill),
+                onDelete: () => onDelete(bill),
               ),
         ],
       ),

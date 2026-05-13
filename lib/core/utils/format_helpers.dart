@@ -35,4 +35,13 @@ class FormatHelpers {
 
   /// Current time in `HH:mm`.
   static String timeNow() => DateFormat('HH:mm').format(DateTime.now());
+
+  /// `Apr 26 · 3:05 PM`
+  static String formatDateTime(DateTime dt) {
+    final local = dt.toLocal();
+    final h = local.hour % 12 == 0 ? 12 : local.hour % 12;
+    final mn = local.minute.toString().padLeft(2, '0');
+    final ampm = local.hour < 12 ? 'AM' : 'PM';
+    return '${DateFormat('MMM d').format(local)} · $h:$mn $ampm';
+  }
 }

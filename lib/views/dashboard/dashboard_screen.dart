@@ -37,7 +37,10 @@ class DashboardScreen extends StatelessWidget {
                   eggs: inventory.productQtyTodayByName('Single Egg'),
                 ),
                 const SizedBox(height: 12),
-                StockOverviewCard(products: inventory.products),
+                StockOverviewCard(
+                  products: inventory.products,
+                  eggPool: inventory.eggPool,
+                ),
                 const SizedBox(height: 12),
                 MonthlySummaryCard(summary: inventory.monthlySummary),
               ],

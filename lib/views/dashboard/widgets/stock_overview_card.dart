@@ -3,13 +3,19 @@ import 'package:flutter/material.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/theme/color_schemes.dart';
 import '../../../core/theme/text_styles.dart';
+import '../../../models/egg_pool.dart';
 import '../../../models/product.dart';
 import '../../widgets/section_card.dart';
 
 class StockOverviewCard extends StatelessWidget {
   final List<Product> products;
+  final EggPool eggPool;
 
-  const StockOverviewCard({super.key, required this.products});
+  const StockOverviewCard({
+    super.key,
+    required this.products,
+    required this.eggPool,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +36,7 @@ class StockOverviewCard extends StatelessWidget {
           ),
           for (var i = 0; i < products.length; i++) ...[
             if (i > 0) const CardDivider(),
-            _StockRow(product: products[i]),
+            _StockRow(product: products[i], eggPool: eggPool),
           ],
         ],
       ),
@@ -40,12 +46,17 @@ class StockOverviewCard extends StatelessWidget {
 
 class _StockRow extends StatelessWidget {
   final Product product;
-  const _StockRow({required this.product});
+  final EggPool eggPool;
+  const _StockRow({required this.product, required this.eggPool});
 
   @override
   Widget build(BuildContext context) {
-    final pct = product.stockPercent.clamp(0, 100);
-    final isLow = product.isLowStock;
+    final epu = product.eggsPerUnit;
+    final total = eggPool.totalAs(epu);
+    final remaining = eggPool.remainingAs(epu);
+    final pct = total > 0 ? (remaining / total * 100).clamp(0, 100) : 0.0;
+    final isLow = total > 0 && pct < 20;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
       child: Column(
@@ -79,7 +90,7 @@ class _StockRow extends StatelessWidget {
                 text: TextSpan(
                   children: [
                     TextSpan(
-                      text: '${product.remaining}',
+                      text: '$remaining',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -87,7 +98,7 @@ class _StockRow extends StatelessWidget {
                       ),
                     ),
                     TextSpan(
-                      text: '/${product.stock}',
+                      text: '/$total',
                       style: const TextStyle(
                         fontSize: 10,
                         color: AppColors.ink400,

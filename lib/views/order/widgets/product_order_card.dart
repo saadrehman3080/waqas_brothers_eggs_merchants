@@ -6,9 +6,14 @@ import '../../../core/utils/format_helpers.dart';
 import '../../../models/product.dart';
 
 /// Per-product order card with always-visible quantity stepper.
+///
+/// [poolStock] — total eggs in stock (pool.stock ÷ eggsPerUnit for this card).
+/// [effectivePoolRemaining] — eggs still available after all current cart items.
 class ProductOrderCard extends StatelessWidget {
   final Product product;
   final int qty;
+  final int poolStock;
+  final int effectivePoolRemaining;
   final VoidCallback onIncrement;
   final VoidCallback onDecrement;
   final VoidCallback onTapPriceOrName;
@@ -17,6 +22,8 @@ class ProductOrderCard extends StatelessWidget {
     super.key,
     required this.product,
     required this.qty,
+    required this.poolStock,
+    required this.effectivePoolRemaining,
     required this.onIncrement,
     required this.onDecrement,
     required this.onTapPriceOrName,
@@ -24,32 +31,36 @@ class ProductOrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final epu = product.eggsPerUnit;
+
+    // How many more units of this product can still be added to the cart.
+    final effectiveUnits = epu > 0 ? effectivePoolRemaining ~/ epu : 0;
+    // Total units in stock (for low-stock threshold calculation).
+    final totalUnits = epu > 0 ? poolStock ~/ epu : 0;
+
     final active = qty > 0;
-    final remaining = product.remaining;
-    final effectiveRemaining = (remaining - qty).clamp(0, remaining);
-    final outOfStock = remaining <= 0;
-    final atMax = !outOfStock && qty >= remaining;
+    final outOfStock = totalUnits <= 0;
+    final atMax = outOfStock || effectiveUnits <= 0;
 
-    final effectiveEmpty = effectiveRemaining <= 0;
-    final effectiveLow = !effectiveEmpty &&
-        product.stock > 0 &&
-        (effectiveRemaining / product.stock) * 100 < 20;
+    final stockPercent =
+        totalUnits > 0 ? (effectiveUnits / totalUnits) * 100 : 0;
+    final effectiveLow = !outOfStock && !atMax && stockPercent < 20;
 
-    final stockColor = outOfStock || effectiveEmpty
+    final stockColor = outOfStock || atMax
         ? AppColors.danger
         : effectiveLow
-        ? AppColors.warning
-        : AppColors.success;
-    final stockSoft = outOfStock || effectiveEmpty
+            ? AppColors.warning
+            : AppColors.success;
+    final stockSoft = outOfStock || atMax
         ? AppColors.dangerSoft
         : effectiveLow
-        ? AppColors.warningSoft
-        : AppColors.successSoft;
-    final stockBorder = outOfStock || effectiveEmpty
+            ? AppColors.warningSoft
+            : AppColors.successSoft;
+    final stockBorder = outOfStock || atMax
         ? AppColors.dangerSoftBorder
         : effectiveLow
-        ? AppColors.warningSoftBorder
-        : AppColors.successSoftBorder;
+            ? AppColors.warningSoftBorder
+            : AppColors.successSoftBorder;
 
     return InkWell(
       onTap: outOfStock ? null : onTapPriceOrName,
@@ -74,14 +85,15 @@ class ProductOrderCard extends StatelessWidget {
                     children: [
                       Text(product.nameEn, style: AppTextStyles.bodyLg),
                       const SizedBox(height: 1),
-                      Text(product.nameUr, style: AppTextStyles.urdu(size: 10)),
+                      Text(
+                          product.nameUr, style: AppTextStyles.urdu(size: 10)),
                     ],
                   ),
                 ),
                 _Stepper(
                   qty: qty,
                   active: active,
-                  atMax: atMax || outOfStock,
+                  atMax: atMax,
                   onIncrement: onIncrement,
                   onDecrement: onDecrement,
                 ),
@@ -95,12 +107,11 @@ class ProductOrderCard extends StatelessWidget {
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 11,
-                        vertical: 4,
-                      ),
+                          horizontal: 11, vertical: 4),
                       decoration: BoxDecoration(
                         color: AppColors.primarySoft,
-                        border: Border.all(color: AppColors.primarySoftBorder),
+                        border:
+                            Border.all(color: AppColors.primarySoftBorder),
                         borderRadius: BorderRadius.circular(7),
                       ),
                       child: Text(
@@ -115,16 +126,16 @@ class ProductOrderCard extends StatelessWidget {
                     const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
+                          horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
                         color: stockSoft,
                         border: Border.all(color: stockBorder),
                         borderRadius: BorderRadius.circular(7),
                       ),
                       child: Text(
-                        outOfStock ? 'Out of stock' : '$effectiveRemaining in stock',
+                        outOfStock
+                            ? 'Out of stock'
+                            : '$effectiveUnits in stock',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,

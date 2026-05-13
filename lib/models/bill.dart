@@ -42,9 +42,11 @@ abstract class Bill {
 
   BillType get type;
 
-  /// Firestore root collection — cash vs credit
-  String get rootCollection =>
-      type == BillType.cash ? 'daily_sale' : 'credit_sale';
+  /// Total eggs consumed across all items in this bill.
+  int get totalEggs => items.fold(0, (acc, item) => acc + item.totalEggs);
+
+  /// Firestore root collection for cash bills (credit overrides firestorePath directly)
+  String get rootCollection => 'daily_sale';
 
   /// 'Walk-in' fallback when no customer name was entered
   String get displayCustomer =>
@@ -65,10 +67,8 @@ abstract class Bill {
         ':${dt.minute.toString().padLeft(2, '0')}';
   }
 
-  /// Valid 4-segment Firestore document path.
-  ///
-  /// daily_sale  / 2026-05-10 / records / 1778401684509
-  /// credit_sale / 2026-05-10 / records / 1778401684509
+  /// Firestore document path. Cash: daily_sale/{date}/records/{id}
+  /// Credit overrides this — see CreditBill.firestorePath.
   String get firestorePath => '$rootCollection/$date/records/$id';
 
   Map<String, dynamic> toJson() => {
@@ -138,6 +138,9 @@ class CashBill extends Bill {
 // ── Credit ─────────────────────────────────────────────────────────────────
 
 class CreditBill extends Bill {
+  final DateTime? movedToCreditAt;
+  final String? movedToCreditByDevice;
+
   const CreditBill({
     required super.id,
     required super.items,
@@ -147,11 +150,47 @@ class CreditBill extends Bill {
     required super.customer,
     required super.device,
     required super.createdAt,
+    this.movedToCreditAt,
+    this.movedToCreditByDevice,
   });
 
-  factory CreditBill.fromMap(Map<String, dynamic> json) =>
-      _fromMap(json, BillType.credit) as CreditBill;
+  factory CreditBill.fromMap(Map<String, dynamic> json) {
+    final createdAtRaw = json['createdAt'];
+    final createdAt = createdAtRaw is Timestamp
+        ? createdAtRaw.toDate()
+        : DateTime.fromMillisecondsSinceEpoch(
+            int.tryParse(json['id'].toString()) ?? 0,
+          );
+    final items = (json['items'] as List<dynamic>)
+        .map((e) => BillItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+    final subtotal =
+        (json['subtotal'] as num?)?.toDouble() ?? (json['total'] as num).toDouble();
+
+    final movedAtRaw = json['movedToCreditAt'];
+    final movedToCreditAt = movedAtRaw is Timestamp ? movedAtRaw.toDate() : null;
+    final rawDevice = json['movedToCreditByDevice'] as String?;
+    final movedToCreditByDevice =
+        (rawDevice != null && rawDevice.isNotEmpty) ? rawDevice : null;
+
+    return CreditBill(
+      id: json['id'].toString(),
+      items: items,
+      subtotal: subtotal,
+      discount: (json['discount'] as num?)?.toDouble() ?? 0,
+      total: (json['total'] as num).toDouble(),
+      customer: json['customer'] as String? ?? '',
+      device: json['device'] as String? ?? '',
+      createdAt: createdAt,
+      movedToCreditAt: movedToCreditAt,
+      movedToCreditByDevice: movedToCreditByDevice,
+    );
+  }
 
   @override
   BillType get type => BillType.credit;
+
+  /// Flat path — all credit bills live in one top-level collection.
+  @override
+  String get firestorePath => 'credit_bills/$id';
 }

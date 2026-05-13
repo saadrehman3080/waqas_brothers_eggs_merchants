@@ -38,37 +38,122 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Future<void> _pickDate() async {
-    final picked = await showDatePicker(
+    DateTime tempDate = _selectedDate;
+
+    final picked = await showDialog<DateTime>(
       context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2024),
-      lastDate: DateTime.now(),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.light(
-            primary: AppColors.primary,
-            onPrimary: Colors.white,
-            surface: AppColors.surface,
-            onSurface: AppColors.ink900,
-          ),
-          dialogTheme: DialogThemeData(
-            shape: RoundedRectangleBorder(
+      barrierColor: AppColors.overlay,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (_, setDialogState) => Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.border),
             ),
-          ),
-          textButtonTheme: TextButtonThemeData(
-            style: TextButton.styleFrom(
-              foregroundColor: AppColors.primary,
-              textStyle: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-              ),
+            clipBehavior: Clip.hardEdge,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // ── Header ──────────────────────────────
+                Container(
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+                  color: AppColors.primary,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'SELECT DATE',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white.withValues(alpha: 0.75),
+                          letterSpacing: 1,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        FormatHelpers.headerDate(tempDate),
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // ── Calendar ────────────────────────────
+                Theme(
+                  data: ThemeData(
+                    colorScheme: const ColorScheme.light(
+                      primary: AppColors.primary,
+                      onPrimary: Colors.white,
+                      surface: AppColors.surface,
+                      onSurface: AppColors.ink900,
+                      onSurfaceVariant: AppColors.ink600,
+                    ),
+                    textButtonTheme: TextButtonThemeData(
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.primary,
+                        textStyle: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                  child: CalendarDatePicker(
+                    initialDate: tempDate,
+                    firstDate: DateTime(2024),
+                    lastDate: DateTime.now(),
+                    onDateChanged: (date) =>
+                        setDialogState(() => tempDate = date),
+                  ),
+                ),
+                // ── Divider ─────────────────────────────
+                Container(height: 1, color: AppColors.border),
+                // ── Actions ─────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(dialogContext),
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.ink600,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 8),
+                        ),
+                        child: Text('Cancel', style: AppTextStyles.buttonSm),
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: () =>
+                            Navigator.pop(dialogContext, tempDate),
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.primary,
+                          backgroundColor: AppColors.primarySoft,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 8),
+                        ),
+                        child: Text('Confirm', style: AppTextStyles.buttonSm),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ),
-        child: child!,
       ),
     );
+
     if (picked == null || !mounted) return;
 
     setState(() {
@@ -88,6 +173,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
     setState(() {
       _historicalBills = bills;
       _dateLoading = false;
+    });
+  }
+
+  void _resetToToday() {
+    setState(() {
+      _selectedDate = DateTime.now();
+      _historicalBills = null;
+      _expandedId = null;
+      _showDeleted = false;
+      _deletedBills = const [];
     });
   }
 
@@ -179,31 +274,40 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Future<void> _convertToCredit(BuildContext context, String id) async {
     final inventory = context.read<InventoryViewModel>();
-    final bill = inventory.bills.firstWhere((b) => b.id == id);
 
-    // Check if customer is "Walk-in" (empty customer field)
-    if (bill.customer.isEmpty) {
-      if (!context.mounted) return;
-      // Show dialog to ask for customer name
-      final customerName = await _showCustomerNameDialog(context);
-      if (customerName == null || customerName.isEmpty) {
-        return; // User cancelled or didn't enter a name
-      }
+    // Historical bills are not in the live stream — look up from the right source.
+    final Bill bill;
+    if (_isToday) {
+      bill = inventory.bills.firstWhere((b) => b.id == id);
     } else {
-      // For named customers, ask for confirmation before moving to credit
+      bill = _historicalBills!.firstWhere((b) => b.id == id);
+    }
+
+    String? resolvedCustomer;
+
+    final isWalkIn = bill.customer.trim().isEmpty ||
+        bill.customer == AppStrings.walkInCustomer;
+
+    if (isWalkIn) {
+      if (!context.mounted) return;
+      final name = await _showCustomerNameDialog(context);
+      if (name == null || name.trim().isEmpty) return;
+      resolvedCustomer = name.trim();
+    } else {
       if (!context.mounted) return;
       final confirmed = await _showMoveToCrediConfirmationDialog(
         context,
         bill.customer,
       );
-      if (!confirmed) {
-        return; // User cancelled the conversion
-      }
+      if (!confirmed) return;
     }
 
-    // Proceed with converting to credit
     if (!context.mounted) return;
-    final ok = await inventory.changeBillType(id, BillType.credit);
+    final ok = await inventory.changeBillType(
+      bill,
+      BillType.credit,
+      customer: resolvedCustomer,
+    );
     if (!context.mounted) return;
     if (ok) {
       CustomSnackbar.info(context, 'Moved to Credit');
@@ -438,7 +542,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             productLookup: inventory.productById,
             onConvertToCredit: () => _convertToCredit(context, b.id),
             onReprint: () => CustomSnackbar.info(context, 'Reprint queued'),
-            onDelete: () => _deleteBill(context, b.id),
+            onDelete: _isToday ? () => _deleteBill(context, b.id) : null,
           );
         },
       );
@@ -455,7 +559,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 GestureDetector(
-                  onTap: _pickDate,
+                  onTap: _isToday ? _pickDate : _resetToToday,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 10, vertical: 4),
@@ -473,14 +577,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          Icons.calendar_today_rounded,
-                          size: 11,
-                          color: _isToday
-                              ? AppColors.ink600
-                              : AppColors.primary,
-                        ),
-                        const SizedBox(width: 5),
+                        if (_isToday) ...[
+                          const Icon(
+                            Icons.calendar_today_rounded,
+                            size: 11,
+                            color: AppColors.ink600,
+                          ),
+                          const SizedBox(width: 5),
+                        ],
                         Text(
                           _isToday
                               ? 'Today'
@@ -493,6 +597,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 : AppColors.primary,
                           ),
                         ),
+                        if (!_isToday) ...[
+                          const SizedBox(width: 5),
+                          const Icon(
+                            Icons.close_rounded,
+                            size: 11,
+                            color: AppColors.primary,
+                          ),
+                        ],
                       ],
                     ),
                   ),
