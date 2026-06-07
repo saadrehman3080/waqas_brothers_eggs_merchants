@@ -27,7 +27,6 @@ class _ProductFormState extends State<ProductForm> {
   final _nameUrCtrl = TextEditingController();
   final _priceCtrl = TextEditingController();
   final _revenueCtrl = TextEditingController();
-  final _eggsCtrl = TextEditingController();
 
   bool _submitting = false;
 
@@ -39,7 +38,6 @@ class _ProductFormState extends State<ProductForm> {
     _nameUrCtrl.text = stock.nameUr;
     _priceCtrl.text = stock.priceText;
     _revenueCtrl.text = stock.revenuePerUnitText;
-    _eggsCtrl.text = stock.eggsPerUnitText;
   }
 
   @override
@@ -48,7 +46,6 @@ class _ProductFormState extends State<ProductForm> {
     _nameUrCtrl.dispose();
     _priceCtrl.dispose();
     _revenueCtrl.dispose();
-    _eggsCtrl.dispose();
     super.dispose();
   }
 
@@ -178,22 +175,6 @@ class _ProductFormState extends State<ProductForm> {
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 12),
-                _label('Eggs Per Unit'),
-                const SizedBox(height: 5),
-                TextField(
-                  controller: _eggsCtrl,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                  ],
-                  onChanged: stock.setEggsPerUnitText,
-                  decoration: InputStyles.field(hint: 'e.g. 360 for Patty, 30 for Tray'),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: AppColors.ink900,
-                  ),
                 ),
                 const SizedBox(height: 16),
                 Row(

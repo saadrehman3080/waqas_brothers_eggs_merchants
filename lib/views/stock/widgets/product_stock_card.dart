@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-
 import '../../../core/theme/color_schemes.dart';
 import '../../../core/theme/text_styles.dart';
+import '../../../core/utils/egg_units.dart';
 import '../../../models/egg_pool.dart';
 import '../../../models/product.dart';
 
@@ -19,16 +19,13 @@ class ProductStockCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final epu = product.eggsPerUnit;
+    final epu = EggUnits.eggsPerUnitForProduct(product);
     final totalUnits = eggPool.totalAs(epu);
     final remainingUnits = eggPool.remainingAs(epu);
-    final soldUnits = eggPool.soldAs(epu);
-    final addedTodayUnits =
-        epu > 0 ? eggPool.stockAddedToday ~/ epu : 0;
 
     final topTiles = <_StatTileData>[
       _StatTileData(
-        label: 'Total',
+        label: 'Stock',
         value: '$totalUnits',
         suffix: 'in stock',
         color: AppColors.ink900,
@@ -38,12 +35,6 @@ class ProductStockCard extends StatelessWidget {
         value: '$remainingUnits',
         suffix: 'remaining',
         color: AppColors.success,
-      ),
-      _StatTileData(
-        label: 'Sold',
-        value: '$soldUnits',
-        suffix: 'units',
-        color: AppColors.primary,
       ),
     ];
 
@@ -56,15 +47,9 @@ class ProductStockCard extends StatelessWidget {
       ),
       _StatTileData(
         label: 'Revenue / Unit',
-        value: 'Rs.${product.revenuePerUnit.toStringAsFixed(0)}',
+        value: 'Rs.${product.revenuePerProductType.toStringAsFixed(0)}',
         suffix: 'margin',
         color: const Color(0xFF059669),
-      ),
-      _StatTileData(
-        label: 'Eggs / Unit',
-        value: epu > 0 ? '$epu' : '—',
-        suffix: 'eggs',
-        color: AppColors.ink600,
       ),
     ];
 
@@ -112,13 +97,6 @@ class ProductStockCard extends StatelessWidget {
               }),
             ),
           ),
-          if (addedTodayUnits > 0 && _isToday(eggPool.stockAddedAtMs)) ...[
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: _TodayStockBadge(units: addedTodayUnits),
-            ),
-          ],
           const SizedBox(height: 10),
         ],
       ),
@@ -291,11 +269,4 @@ class _TodayStockBadge extends StatelessWidget {
       ),
     );
   }
-}
-
-bool _isToday(int ms) {
-  if (ms == 0) return false;
-  final d = DateTime.fromMillisecondsSinceEpoch(ms);
-  final now = DateTime.now();
-  return d.year == now.year && d.month == now.month && d.day == now.day;
 }

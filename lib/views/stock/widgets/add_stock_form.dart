@@ -5,10 +5,8 @@ import 'package:provider/provider.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/theme/color_schemes.dart';
 import '../../../core/theme/text_styles.dart';
-import '../../../models/product.dart';
 import '../../../viewmodels/stock_viewmodel.dart';
 import '../../widgets/app_button.dart';
-
 
 class AddStockForm extends StatefulWidget {
   final VoidCallback onCancel;
@@ -27,11 +25,7 @@ class AddStockForm extends StatefulWidget {
 class _AddStockFormState extends State<AddStockForm> {
   final TextEditingController _pattyCtrl = TextEditingController();
   final TextEditingController _trayCtrl = TextEditingController();
-  final TextEditingController _dozenCtrl = TextEditingController();
-  final TextEditingController _singleCtrl = TextEditingController();
-
   bool _submitting = false;
-  StockViewModel? _stockRef;
 
   Future<void> _handleSubmit() async {
     if (_submitting) return;
@@ -43,85 +37,43 @@ class _AddStockFormState extends State<AddStockForm> {
     }
   }
 
-  TextEditingController _formulaCtrlFor(String nameEn) {
-    switch (nameEn) {
-      case 'Patty':
-        return _pattyCtrl;
-      case 'Egg Tray':
-        return _trayCtrl;
-      case 'Egg Dozen':
-        return _dozenCtrl;
-      case 'Single Egg':
-        return _singleCtrl;
-      default:
-        return _pattyCtrl;
-    }
-  }
-
-  ValueChanged<String> _formulaOnChangedFor(
-    StockViewModel stock,
-    String nameEn,
-  ) {
-    switch (nameEn) {
-      case 'Patty':
-        return stock.setFormulaPatty;
-      case 'Egg Tray':
-        return stock.setFormulaTray;
-      case 'Egg Dozen':
-        return stock.setFormulaDozen;
-      case 'Single Egg':
-        return stock.setFormulaSingle;
-      default:
-        return stock.setFormulaPatty;
-    }
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_stockRef == null) {
-      _stockRef = context.read<StockViewModel>();
-      _stockRef!.addListener(_onViewModelChanged);
-    }
-  }
-
-  void _onViewModelChanged() {
-    if (!mounted) return;
-    final s = _stockRef!;
-    _syncCtrl(_pattyCtrl, s.formulaPattyText);
-    _syncCtrl(_trayCtrl, s.formulaTrayText);
-    _syncCtrl(_dozenCtrl, s.formulaDozenText);
-    _syncCtrl(_singleCtrl, s.formulaSingleText);
-  }
-
-  void _syncCtrl(TextEditingController ctrl, String value) {
-    if (ctrl.text != value) {
-      ctrl.value = TextEditingValue(
-        text: value,
-        selection: TextSelection.collapsed(offset: value.length),
-      );
-    }
-  }
-
   @override
   void dispose() {
-    _stockRef?.removeListener(_onViewModelChanged);
     _pattyCtrl.dispose();
     _trayCtrl.dispose();
-    _dozenCtrl.dispose();
-    _singleCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final stock = context.watch<StockViewModel>();
-    final products = stock.products;
+    final patties = int.tryParse(stock.formulaPattyText) ?? 0;
+    final traysInput = int.tryParse(stock.formulaTrayText) ?? 0;
+    final trays = patties * 12 + traysInput;
+    final eggs = patties * 360 + traysInput * 30;
+
+    // Keep controllers in sync with viewmodel
+    if (_pattyCtrl.text != stock.formulaPattyText) {
+      _pattyCtrl.value = TextEditingValue(
+        text: stock.formulaPattyText,
+        selection: TextSelection.collapsed(
+          offset: stock.formulaPattyText.length,
+        ),
+      );
+    }
+    if (_trayCtrl.text != stock.formulaTrayText) {
+      _trayCtrl.value = TextEditingValue(
+        text: stock.formulaTrayText,
+        selection: TextSelection.collapsed(
+          offset: stock.formulaTrayText.length,
+        ),
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // ── Product list card ──
+        // ── Card ──
         Container(
           decoration: BoxDecoration(
             color: AppColors.surface,
@@ -131,6 +83,7 @@ class _AddStockFormState extends State<AddStockForm> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // ── Header ──
               Padding(
                 padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
                 child: Column(
@@ -146,6 +99,7 @@ class _AddStockFormState extends State<AddStockForm> {
                 ),
               ),
               const Divider(height: 1, thickness: 1, color: AppColors.border),
+
               // ── Formula reference strip ──
               Container(
                 width: double.infinity,
@@ -153,37 +107,197 @@ class _AddStockFormState extends State<AddStockForm> {
                   horizontal: 16,
                   vertical: 11,
                 ),
-                decoration: const BoxDecoration(
-                  color: AppColors.primarySoft,
-                ),
-                child: Row(
+                decoration: const BoxDecoration(color: AppColors.primarySoft),
+                child: const Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: _FormulaUnit(value: '1', label: 'PATTY'),
                     ),
-                    const _FormulaDivider(),
-                    const Expanded(
+                    _FormulaDivider(),
+                    Expanded(
                       child: _FormulaUnit(value: '12', label: 'TRAYS'),
                     ),
-                    const _FormulaDivider(),
-                    const Expanded(
+                    _FormulaDivider(),
+                    Expanded(
                       child: _FormulaUnit(value: '30', label: 'EGGS / TRAY'),
                     ),
-                    const _FormulaDivider(),
-                    const Expanded(
+                    _FormulaDivider(),
+                    Expanded(
                       child: _FormulaUnit(value: '360', label: 'TOTAL EGGS'),
                     ),
                   ],
                 ),
               ),
               const Divider(height: 1, thickness: 1, color: AppColors.border),
-              for (int i = 0; i < products.length; i++)
-                _ProductRow(
-                  product: products[i],
-                  controller: _formulaCtrlFor(products[i].nameEn),
-                  onChanged: _formulaOnChangedFor(stock, products[i].nameEn),
-                  isLast: i == products.length - 1,
+
+              // ── Patty input ──
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Patties Received',
+                                style: AppTextStyles.bodyMd,
+                              ),
+                              Text('پٹی', style: AppTextStyles.urdu(size: 10)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        SizedBox(
+                          width: 110,
+                          child: TextField(
+                            controller: _pattyCtrl,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
+                            onChanged: stock.setFormulaPatty,
+                            textAlign: TextAlign.center,
+                            autofocus: true,
+                            decoration: InputDecoration(
+                              hintText: '0',
+                              suffixText: 'patties',
+                              suffixStyle: const TextStyle(
+                                fontSize: 11,
+                                color: AppColors.ink400,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 11,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: const BorderSide(
+                                  color: AppColors.border,
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: const BorderSide(
+                                  color: AppColors.border,
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: const BorderSide(
+                                  color: AppColors.primary,
+                                  width: 1.5,
+                                ),
+                              ),
+                              filled: true,
+                              fillColor: AppColors.background,
+                            ),
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.ink900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // ── Trays input ──
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Trays Received',
+                                style: AppTextStyles.bodyMd,
+                              ),
+                              Text('ٹریز', style: AppTextStyles.urdu(size: 10)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        SizedBox(
+                          width: 110,
+                          child: TextField(
+                            controller: _trayCtrl,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
+                            onChanged: stock.setFormulaTray,
+                            textAlign: TextAlign.center,
+                            decoration: InputDecoration(
+                              hintText: '0',
+                              suffixText: 'trays',
+                              suffixStyle: const TextStyle(
+                                fontSize: 11,
+                                color: AppColors.ink400,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 11,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: const BorderSide(
+                                  color: AppColors.border,
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: const BorderSide(
+                                  color: AppColors.border,
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: const BorderSide(
+                                  color: AppColors.primary,
+                                  width: 1.5,
+                                ),
+                              ),
+                              filled: true,
+                              fillColor: AppColors.background,
+                            ),
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.ink900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // ── Auto-calculated summary ──
+                    if (patties > 0 || traysInput > 0)
+                      Row(
+                        children: [
+                          _SummaryChip(value: '$trays', label: 'trays'),
+                          const SizedBox(width: 8),
+                          _SummaryChip(
+                            value: '$eggs',
+                            label: 'eggs',
+                            highlight: true,
+                          ),
+                        ],
+                      )
+                    else
+                      Text(
+                        'Enter the number of patties or trays received',
+                        style: TextStyle(fontSize: 11, color: AppColors.ink400),
+                      ),
+                    const SizedBox(height: 6),
+                  ],
                 ),
+              ),
             ],
           ),
         ),
@@ -217,104 +331,49 @@ class _AddStockFormState extends State<AddStockForm> {
   }
 }
 
-// ── Product row ────────────────────────────────────────────────────────────
+// ── Summary chip ───────────────────────────────────────────────────────────
 
-class _ProductRow extends StatelessWidget {
-  final Product product;
-  final TextEditingController controller;
-  final ValueChanged<String> onChanged;
-  final bool isLast;
+class _SummaryChip extends StatelessWidget {
+  final String value;
+  final String label;
+  final bool highlight;
 
-  const _ProductRow({
-    required this.product,
-    required this.controller,
-    required this.onChanged,
-    required this.isLast,
+  const _SummaryChip({
+    required this.value,
+    required this.label,
+    this.highlight = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        border: Border(
-          bottom: isLast
-              ? BorderSide.none
-              : const BorderSide(color: AppColors.border),
+        color: highlight
+            ? AppColors.primary.withValues(alpha: 0.08)
+            : AppColors.primarySoft,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: highlight
+              ? AppColors.primary.withValues(alpha: 0.25)
+              : AppColors.primarySoftBorder,
         ),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Avatar
-          // Container(
-          //   width: 36,
-          //   height: 36,
-          //   alignment: Alignment.center,
-          //   decoration: BoxDecoration(
-          //     color: AppColors.primarySoft,
-          //     shape: BoxShape.circle,
-          //     border: Border.all(color: AppColors.primarySoftBorder),
-          //   ),
-          //   child: Text(
-          //     product.nameEn[0].toUpperCase(),
-          //     style: const TextStyle(
-          //       fontSize: 14,
-          //       fontWeight: FontWeight.w800,
-          //       color: AppColors.primary,
-          //     ),
-          //   ),
-          // ),
-          //const SizedBox(width: 10),
-          // Names
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(product.nameEn, style: AppTextStyles.bodyMd),
-                Text(product.nameUr, style: AppTextStyles.urdu(size: 10)),
-              ],
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: highlight ? AppColors.primary : AppColors.ink900,
             ),
           ),
-          const SizedBox(width: 8),
-
-          // Qty field — editable for all products; formula-driven ones cross-update
-          SizedBox(
-            width: 92,
-            child: TextField(
-              controller: controller,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              onChanged: onChanged,
-              textAlign: TextAlign.center,
-              decoration: InputDecoration(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 9,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: AppColors.border),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: AppColors.border),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(
-                    color: AppColors.primary,
-                    width: 1.5,
-                  ),
-                ),
-                filled: true,
-                fillColor: AppColors.background,
-              ),
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: AppColors.ink900,
-              ),
-            ),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 11, color: AppColors.ink600),
           ),
         ],
       ),

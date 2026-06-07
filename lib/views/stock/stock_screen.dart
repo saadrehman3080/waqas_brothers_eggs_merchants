@@ -56,7 +56,7 @@ class _StockView extends StatelessWidget {
   Widget build(BuildContext context) {
     final inventory = context.watch<InventoryViewModel>();
     final stock = context.watch<StockViewModel>();
-    final products = inventory.products;
+    final products = inventory.eggPool.products;
 
     return Container(
       color: AppColors.background,
@@ -85,19 +85,9 @@ class _StockView extends StatelessWidget {
                 }
                 final pool = inventory.eggPool;
                 final showBanner =
-                    pool.stockAddedAt.isNotEmpty ||
+                    pool.pattiesAddedToday > 0 ||
                     pool.lastStockDevice.isNotEmpty;
-                final now = DateTime.now();
-                final lastUpdate = pool.stockAddedAtMs > 0
-                    ? DateTime.fromMillisecondsSinceEpoch(pool.stockAddedAtMs)
-                    : null;
-                final isToday = lastUpdate != null &&
-                    lastUpdate.year == now.year &&
-                    lastUpdate.month == now.month &&
-                    lastUpdate.day == now.day;
-                // 360 eggs per patty
-                final pattiesAddedToday =
-                    isToday ? pool.stockAddedToday ~/ 360 : 0;
+                final pattiesAddedToday = pool.pattiesAddedToday;
                 return ListView.builder(
                   padding: const EdgeInsets.fromLTRB(13, 11, 13, 16),
                   itemCount: products.length + (showBanner ? 1 : 0),

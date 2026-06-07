@@ -77,13 +77,14 @@ class InventoryViewModel extends ChangeNotifier {
     );
 
     await _eggPoolSub?.cancel();
-    _eggPoolSub = _dataService.watchEggPool().listen(
-      (pool) {
-        _eggPool = pool;
-        notifyListeners();
-      },
-      onError: (e) => debugPrint('watchEggPool error: $e'),
-    );
+    _eggPoolSub = _dataService.watchEggPool().listen((pool) {
+      _eggPool = pool;
+      if (_products.isEmpty && pool.products.isNotEmpty) {
+        _products = pool.products;
+        if (_state != InventoryState.loaded) _state = InventoryState.loaded;
+      }
+      notifyListeners();
+    }, onError: (e) => debugPrint('watchEggPool error: $e'));
 
     _subscribeTodayBills();
   }
@@ -92,24 +93,18 @@ class InventoryViewModel extends ChangeNotifier {
     final today = FormatHelpers.todayKey();
 
     _cashBillsSub?.cancel();
-    _cashBillsSub = _dataService.watchCashBillsForDate(today).listen(
-      (bills) {
-        _cashBills = bills;
-        _cashBillsLoaded = true;
-        notifyListeners();
-      },
-      onError: (e) => debugPrint('watchCashBills error: $e'),
-    );
+    _cashBillsSub = _dataService.watchCashBillsForDate(today).listen((bills) {
+      _cashBills = bills;
+      _cashBillsLoaded = true;
+      notifyListeners();
+    }, onError: (e) => debugPrint('watchCashBills error: $e'));
 
     _creditBillsSub?.cancel();
-    _creditBillsSub = _dataService.watchCreditBills().listen(
-      (bills) {
-        _creditBills = bills;
-        _creditBillsLoaded = true;
-        notifyListeners();
-      },
-      onError: (e) => debugPrint('watchCreditBills error: $e'),
-    );
+    _creditBillsSub = _dataService.watchCreditBills().listen((bills) {
+      _creditBills = bills;
+      _creditBillsLoaded = true;
+      notifyListeners();
+    }, onError: (e) => debugPrint('watchCreditBills error: $e'));
   }
 
   @override
@@ -177,8 +172,8 @@ class InventoryViewModel extends ChangeNotifier {
       _dataService.fetchCashBillsForDate(date);
 
   Future<List<({CashBill bill, DateTime deletedAt})>>
-      fetchDeletedCashBillsForDate(String date) =>
-          _dataService.fetchDeletedCashBillsForDate(date);
+  fetchDeletedCashBillsForDate(String date) =>
+      _dataService.fetchDeletedCashBillsForDate(date);
 
   Future<bool> deleteCashBill(String id) async {
     try {
@@ -193,7 +188,7 @@ class InventoryViewModel extends ChangeNotifier {
   }
 
   Future<List<({CreditBill bill, DateTime deletedAt, String deletedByDevice})>>
-      fetchDeletedCreditBills() => _dataService.fetchDeletedCreditBills();
+  fetchDeletedCreditBills() => _dataService.fetchDeletedCreditBills();
 
   Future<bool> deleteCreditBill(CreditBill bill) async {
     try {
@@ -209,10 +204,11 @@ class InventoryViewModel extends ChangeNotifier {
     }
   }
 
-  Future<bool> addStockEntry({required int totalEggs}) async {
+  Future<bool> addStockEntry({required int patties, int trays = 0}) async {
     try {
       await _dataService.addStockEntry(
-        totalEggs: totalEggs,
+        patties: patties,
+        trays: trays,
         device: await _deviceName(),
       );
       return true;
@@ -228,7 +224,6 @@ class InventoryViewModel extends ChangeNotifier {
     required String nameEn,
     required String nameUr,
     required double price,
-    required int eggsPerUnit,
     double revenuePerUnit = 0,
   }) async {
     try {
@@ -237,7 +232,6 @@ class InventoryViewModel extends ChangeNotifier {
         nameEn: nameEn,
         nameUr: nameUr,
         price: price,
-        eggsPerUnit: eggsPerUnit,
         revenuePerUnit: revenuePerUnit,
       );
       return true;
@@ -283,9 +277,7 @@ class InventoryViewModel extends ChangeNotifier {
   int productQtyTodayByName(String nameEn) {
     final product = _products.firstWhere(
       (p) => p.nameEn == nameEn,
-      orElse: () => const Product(
-        id: '', nameEn: '', nameUr: '', price: 0, eggsPerUnit: 0,
-      ),
+      orElse: () => const Product(id: '', nameEn: '', nameUr: '', price: 0),
     );
     if (product.id.isEmpty) return 0;
     return productQtyToday(product.id);
@@ -297,7 +289,7 @@ class InventoryViewModel extends ChangeNotifier {
       for (final item in bill.items) {
         final product = productById(item.productId);
         if (product == null) continue;
-        total += item.qty * product.revenuePerUnit;
+        total += item.qty * product.revenuePerProductType;
       }
     }
     return total;
@@ -328,7 +320,7 @@ class InventoryViewModel extends ChangeNotifier {
       for (final item in bill.items) {
         final product = productById(item.productId);
         if (product == null) continue;
-        margin += item.qty * product.revenuePerUnit;
+        margin += item.qty * product.revenuePerProductType;
       }
     }
 

@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
+import '../core/utils/egg_units.dart';
 import '../models/bill.dart';
 import '../models/bill_item.dart';
 import '../models/egg_pool.dart';
@@ -29,14 +30,12 @@ class DataService {
     required String nameEn,
     required String nameUr,
     required double price,
-    required int eggsPerUnit,
     double revenuePerUnit = 0,
   }) async {
     await _products.doc(id).update({
       'nameEn': nameEn,
       'nameUr': nameUr,
       'price': price,
-      'eggsPerUnit': eggsPerUnit,
       'revenuePerUnit': revenuePerUnit,
     });
   }
@@ -50,15 +49,21 @@ class DataService {
   }
 
   Future<void> addStockEntry({
-    required int totalEggs,
+    required int patties,
+    int trays = 0,
     required String device,
   }) async {
-    await _poolRef.set({
-      'stock': FieldValue.increment(totalEggs),
-      'stockAddedToday': FieldValue.increment(totalEggs),
+    final addedEggs = patties * 360 + trays * 30;
+    final data = {
+      'stock': FieldValue.increment(addedEggs),
+      'pattiesAddedToday': FieldValue.increment(patties),
       'lastStockDevice': device,
       'stockAddedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    };
+    if (trays > 0) {
+      data['traysAddedToday'] = FieldValue.increment(trays);
+    }
+    await _poolRef.set(data, SetOptions(merge: true));
   }
 
   // ── Bills ──────────────────────────────────────────────────
@@ -82,14 +87,17 @@ class DataService {
       if (qty <= 0) return;
       final product = productMap[pid];
       if (product == null) throw StateError('Product $pid not found');
-      items.add(BillItem(
-        productId: pid,
-        qty: qty,
-        price: product.price,
-        eggsPerUnit: product.eggsPerUnit,
-      ));
+      final epu = EggUnits.eggsPerUnitForProduct(product);
+      items.add(
+        BillItem(
+          productId: pid,
+          qty: qty,
+          price: product.price,
+          eggsPerUnit: epu,
+        ),
+      );
       subtotal += product.price * qty;
-      totalEggs += qty * product.eggsPerUnit;
+      totalEggs += qty * epu;
     });
     if (items.isEmpty) throw StateError('Cannot create an empty bill');
 
@@ -128,7 +136,7 @@ class DataService {
   }
 
   Future<List<({CashBill bill, DateTime deletedAt})>>
-      fetchDeletedCashBillsForDate(String date) async {
+  fetchDeletedCashBillsForDate(String date) async {
     final snap = await _db
         .collection('deleted_bills')
         .doc('cash_records')
@@ -168,8 +176,7 @@ class DataService {
         .collection('credit_bills')
         .snapshots()
         .map(
-          (snap) =>
-              snap.docs.map((d) => CreditBill.fromMap(d.data())).toList(),
+          (snap) => snap.docs.map((d) => CreditBill.fromMap(d.data())).toList(),
         );
   }
 
@@ -253,10 +260,8 @@ class DataService {
     return updated;
   }
 
-  Future<
-      List<(
-        {CreditBill bill, DateTime deletedAt, String deletedByDevice}
-      )>> fetchDeletedCreditBills() async {
+  Future<List<({CreditBill bill, DateTime deletedAt, String deletedByDevice})>>
+  fetchDeletedCreditBills() async {
     final snap = await _db
         .collection('deleted_credit_bills')
         .orderBy('deletedAt', descending: true)
@@ -271,7 +276,7 @@ class DataService {
       return (
         bill: bill,
         deletedAt: deletedAt,
-        deletedByDevice: deletedByDevice
+        deletedByDevice: deletedByDevice,
       );
     }).toList();
   }
@@ -290,20 +295,29 @@ class DataService {
 
   EggPool _poolFromDoc(Map<String, dynamic> data) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     final ts = data['stockAddedAt'];
     String formattedAt = '';
-    int atMs = 0;
+
     if (ts is Timestamp) {
       final dt = ts.toDate().toLocal();
       final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
       final mn = dt.minute.toString().padLeft(2, '0');
       final ampm = dt.hour < 12 ? 'AM' : 'PM';
       formattedAt = '${dt.day} ${months[dt.month - 1]}  $h:$mn $ampm';
-      atMs = dt.millisecondsSinceEpoch;
     }
-    return EggPool.fromMap(data, formattedAt: formattedAt, atMs: atMs);
+    return EggPool.fromMap(data, formattedAt: formattedAt);
   }
 }

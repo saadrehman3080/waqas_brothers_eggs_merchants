@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../core/utils/egg_units.dart';
 import '../models/bill.dart';
 import '../models/product.dart';
 import 'inventory_viewmodel.dart';
@@ -36,8 +37,8 @@ class OrderViewModel extends ChangeNotifier {
   bool get hasItems => _cart.values.any((q) => q > 0);
 
   double get subtotal => _inventory.products.fold(0.0, (acc, p) {
-        return acc + qtyOf(p.id) * p.price;
-      });
+    return acc + qtyOf(p.id) * p.price;
+  });
 
   double get total =>
       (subtotal - _discount).clamp(0, double.infinity).toDouble();
@@ -47,8 +48,9 @@ class OrderViewModel extends ChangeNotifier {
     int total = 0;
     for (final entry in _cart.entries) {
       final product = _inventory.productById(entry.key);
-      if (product != null && product.eggsPerUnit > 0) {
-        total += entry.value * product.eggsPerUnit;
+      final epu = product == null ? 0 : EggUnits.eggsPerUnitForProduct(product);
+      if (product != null && epu > 0) {
+        total += entry.value * epu;
       }
     }
     return total;
@@ -60,8 +62,9 @@ class OrderViewModel extends ChangeNotifier {
   void increment(String productId) {
     final product = _inventory.productById(productId);
     if (product == null) return;
-    if (product.eggsPerUnit > 0) {
-      if (effectivePoolRemaining < product.eggsPerUnit) return;
+    final epu = EggUnits.eggsPerUnitForProduct(product);
+    if (epu > 0) {
+      if (effectivePoolRemaining < epu) return;
     }
     _cart.update(productId, (q) => q + 1, ifAbsent: () => 1);
     notifyListeners();
@@ -80,11 +83,16 @@ class OrderViewModel extends ChangeNotifier {
   void setQty(String productId, int qty) {
     final product = _inventory.productById(productId);
     int max;
-    if (product != null && product.eggsPerUnit > 0) {
-      // Pool available before this product's current cart contribution
-      final poolBeforeThis =
-          _inventory.poolRemaining - (cartEggs - qtyOf(productId) * product.eggsPerUnit);
-      max = poolBeforeThis ~/ product.eggsPerUnit;
+    if (product != null) {
+      final epu = EggUnits.eggsPerUnitForProduct(product);
+      if (epu > 0) {
+        // Pool available before this product's current cart contribution
+        final poolBeforeThis =
+            _inventory.poolRemaining - (cartEggs - qtyOf(productId) * epu);
+        max = poolBeforeThis ~/ epu;
+      } else {
+        max = qty;
+      }
     } else {
       max = qty;
     }
@@ -107,9 +115,8 @@ class OrderViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<Product> selectedProducts() => _inventory.products
-      .where((p) => qtyOf(p.id) > 0)
-      .toList(growable: false);
+  List<Product> selectedProducts() =>
+      _inventory.products.where((p) => qtyOf(p.id) > 0).toList(growable: false);
 
   // ── Checkout config ────────────────────────────────────────
   void setPaymentType(BillType type) {

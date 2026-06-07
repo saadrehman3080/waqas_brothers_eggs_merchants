@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/color_schemes.dart';
 import '../../core/utils/custom_snackbar.dart';
+import '../../core/utils/egg_units.dart';
 import '../../viewmodels/inventory_viewmodel.dart';
 import '../../viewmodels/order_viewmodel.dart';
 import '../widgets/empty_state.dart';
@@ -71,7 +72,7 @@ class _OrderView extends StatelessWidget {
                         onIncrement: () => order.increment(p.id),
                         onDecrement: () => order.decrement(p.id),
                         onTapPriceOrName: () async {
-                          final epu = p.eggsPerUnit;
+                          final epu = EggUnits.eggsPerUnitForProduct(p);
                           final effRemaining = epu > 0
                               ? order.effectivePoolRemaining ~/ epu + q
                               : 0;

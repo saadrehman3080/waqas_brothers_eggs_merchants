@@ -6,7 +6,6 @@ import '../../viewmodels/inventory_viewmodel.dart';
 import 'widgets/collection_hero.dart';
 import 'widgets/dashboard_header.dart';
 import 'widgets/monthly_summary_card.dart';
-import 'widgets/stock_overview_card.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -35,11 +34,6 @@ class DashboardScreen extends StatelessWidget {
                   trays: inventory.productQtyTodayByName('Egg Tray'),
                   patties: inventory.productQtyTodayByName('Patty'),
                   eggs: inventory.productQtyTodayByName('Single Egg'),
-                ),
-                const SizedBox(height: 12),
-                StockOverviewCard(
-                  products: inventory.products,
-                  eggPool: inventory.eggPool,
                 ),
                 const SizedBox(height: 12),
                 MonthlySummaryCard(summary: inventory.monthlySummary),

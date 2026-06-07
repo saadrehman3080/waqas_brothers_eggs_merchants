@@ -1,11 +1,5 @@
-/// Egg unit conversion constants.
-///
-/// 1 patty = 12 trays
-/// 1 tray  = 30 eggs
-/// 1 dozen = 12 eggs
-///
-/// Derived:
-///   1 patty = 360 eggs = 30 dozens = 12 trays
+import 'package:waqas_brothers_eggs_merchants/models/product.dart' show Product;
+
 class EggUnits {
   EggUnits._();
 
@@ -53,4 +47,24 @@ class EggUnits {
       dozens: dozens > 0 ? dozens : null,
     );
   }
+
+  static int eggsPerUnitForProduct(Product product) {
+    return _defaultEggsPerUnit[product.id] ??
+        _eggsPerUnitByName[product.nameEn] ??
+        0;
+  }
+
+  static const Map<String, int> _defaultEggsPerUnit = {
+    '1EbOjOKjYu8qUg56QXGd': 30,
+    '2pZtQh92vB1mN4xFzLaK': 360,
+    '3LfYnG8eRwUa5PvSxQzM': 12,
+    '4MxFpJ7cTvRe6ZnUaHsB': 1,
+  };
+
+  static const Map<String, int> _eggsPerUnitByName = {
+    'Egg Tray': 30,
+    'Patty': 360,
+    'Egg Dozen': 12,
+    'Single Egg': 1,
+  };
 }
